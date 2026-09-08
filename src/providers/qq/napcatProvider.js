@@ -126,6 +126,9 @@ class NapcatProvider extends BaseQqProvider {
             ws.removeAllListeners?.('open')
             ws.removeAllListeners?.('message')
             ws.removeAllListeners?.('error')
+            // Closing a CONNECTING ws emits an asynchronous error before close.
+            // Keep it handled after the readiness listener has been removed.
+            ws.on?.('error', () => {})
             ws.removeAllListeners?.('unexpected-response')
             if (ws.readyState === 3) {
                 ws.removeAllListeners?.('close')

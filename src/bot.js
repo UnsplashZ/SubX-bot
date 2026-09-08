@@ -41,6 +41,7 @@ let processHandlersRegistered = false;
 let configReloadHandlersRegistered = false;
 let configControlServer = null;
 let shutdownPromise = null;
+let providerStartupRecovery = null;
 const pendingSubscriptionStops = new Set();
 
 const WS_OPEN = WebSocket.OPEN ?? 1;
@@ -544,7 +545,8 @@ function createQqProviderReloadHandler(options = {}) {
     const descriptorFactory = options.createDescriptor || createProviderDescriptor;
     let previousExternal = null;
     let previousStopState = 'untouched';
-    return qqProviderRuntime.createReloadHandler({
+    let recoveryToResume = null;
+    const handler = qqProviderRuntime.createReloadHandler({
         id: 'qq-provider-runtime',
         ownedPaths: ['qq', 'paths.napcatTemp'],
         timeoutMs: 330000,
@@ -621,6 +623,7 @@ function createQqProviderReloadHandler(options = {}) {
         },
         afterAdmissionOpen({ activeSlot }) {
             activeSlot?.provider?.finalizeSharedStateCommit?.();
+            recoveryToResume = null;
         },
         async restorePrevious({ previous, previousSlot }) {
             if (previousStopState === 'residual') {
@@ -629,6 +632,9 @@ function createQqProviderReloadHandler(options = {}) {
                 error.residualCount = qqProviderRuntime.providerRuntimeManager.getStatus().residualCount;
                 throw error;
             }
+            // Startup can now leave the service online with no QQ connection.
+            // Rolling back a config edit must restore that disconnected state.
+            if (!previousExternal?.provider && !previousSlot) return { provider: null };
             if (previousStopState !== 'stopped' && restoreExistingProviderHandle(previousExternal, previous)) {
                 return { provider: previousExternal.provider };
             }
@@ -643,6 +649,31 @@ function createQqProviderReloadHandler(options = {}) {
         resumeOperations: resumeProviderOperations,
         pauseRecovery: pauseRecoveredProviderOperations
     });
+    const preflight = handler.preflight;
+    handler.preflight = (candidate, previous, context = {}) => preflight(candidate, previous, {
+        ...context,
+        releaseEpoch: context.releaseEpoch || providerStartupRecovery?.releaseEpoch
+    });
+    const prepareParallel = handler.prepareParallel;
+    handler.prepareParallel = async (...args) => {
+        // The transaction registers rollbackPrepared before entering this phase.
+        // Preflight failures therefore cannot strand a cancelled startup retry.
+        recoveryToResume = providerStartupRecovery;
+        await stopProviderStartupRecovery();
+        return prepareParallel(...args);
+    };
+    const rollbackPrepared = handler.rollbackPrepared;
+    handler.rollbackPrepared = async (...args) => {
+        try {
+            return await rollbackPrepared(...args);
+        } finally {
+            if (recoveryToResume && !isManualClose && !qqProviderRuntime.getCurrentProvider()) {
+                startProviderStartupRecovery(recoveryToResume.releaseEpoch, recoveryToResume.options);
+            }
+            recoveryToResume = null;
+        }
+    };
+    return handler;
 }
 
 function registerCoreConfigReloadHandlers() {
@@ -1179,7 +1210,7 @@ function createWebSocketConnection(options = {}) {
         pendingSubscriptionStops.add(stopPromise);
         clearGroupRefreshTimer();
 
-        if (!isManualClose) {
+        if (!isManualClose && (!options.startupRecovery || options.startupRecovery.complete)) {
             stopPromise.finally(() => {
                 if (!isManualClose) scheduleReconnect();
             });
@@ -1325,6 +1356,7 @@ async function performGracefulShutdown(exitCode = 0, options = {}) {
     clearReconnectTimer();
     clearGroupRefreshTimer();
 
+    await attempt('provider-startup-stop', stopProviderStartupRecovery);
     await attempt('config-control-stop', stopConfigControlServer);
 
     try {
@@ -1409,6 +1441,109 @@ async function performGracefulShutdown(exitCode = 0, options = {}) {
     return finalExitCode;
 }
 
+async function stopProviderStartupRecovery() {
+    const recovery = providerStartupRecovery;
+    if (!recovery) return;
+    recovery.cancelled = true;
+    clearTimeout(recovery.timer);
+    await recovery.promise;
+    if (providerStartupRecovery === recovery) providerStartupRecovery = null;
+}
+
+function startProviderStartupRecovery(releaseEpoch, options = {}) {
+    if (providerStartupRecovery && !providerStartupRecovery.cancelled) return providerStartupRecovery.promise;
+    const recovery = { releaseEpoch, options, attempt: 0, timer: null, promise: null, cancelled: false, complete: false };
+    providerStartupRecovery = recovery;
+    const manager = qqProviderRuntime.providerRuntimeManager;
+    const schedule = () => {
+        if (recovery.cancelled || isManualClose) return;
+        const delayMs = Math.min(1000 * (2 ** Math.min(recovery.attempt++, 6)), MAX_RECONNECT_DELAY);
+        botLog('warn', 'provider-startup-retry-scheduled', { delayMs });
+        recovery.timer = setTimeout(() => {
+            recovery.timer = null;
+            recovery.promise = attempt();
+        }, delayMs);
+    };
+    const attempt = async () => {
+        if (recovery.cancelled || isManualClose) return;
+        // A configuration transaction owns Provider changes while admission is closed.
+        if (applicationAdmissionGate.snapshot().closed || manager.ingressPaused) {
+            schedule();
+            return;
+        }
+        if (qqProviderRuntime.getCurrentProvider()) return;
+        let provider = null;
+        try {
+            if (manager.residualSlots.size > 0) await manager.retryResidualCleanup();
+            if (recovery.cancelled || isManualClose) return;
+            const snapshot = config.getSnapshot();
+            const descriptor = (options.createDescriptor || createProviderDescriptor)(snapshot);
+            provider = descriptor.provider;
+            let connectionError = null;
+            provider.ws?.on?.('error', (error) => { connectionError = error; });
+            if (provider.id === 'official') await provider.start(descriptor.startOptions);
+            await provider.waitUntilReady(descriptor.timeoutMs);
+            if (connectionError) throw connectionError;
+            if (recovery.cancelled || isManualClose) throw new Error('Provider startup cancelled');
+            if (provider.isRuntimeReady && !provider.isRuntimeReady()) throw new Error('Provider lost readiness');
+            if (provider.id === 'official') {
+                const sharedState = provider.commitSharedState?.();
+                if (sharedState) manager.sharedState = sharedState;
+                qqProviderRuntime.setCurrentProvider(provider);
+                await publishOfficialProvider(provider, snapshot, { startRuntime: false });
+            } else {
+                createWebSocketConnection({
+                    ws: provider.ws, provider, startRuntime: false, startupRecovery: recovery,
+                    wsUrl: snapshot.qq.napcat.wsUrl, wsToken: snapshot.qq.napcat.wsToken
+                });
+            }
+            releaseCurrentEpoch(releaseEpoch);
+            await startActiveProviderRuntime(provider, snapshot, { resumeOperations: true });
+            if (qqProviderRuntime.getCurrentProvider() !== provider ||
+                (provider.isRuntimeReady && !provider.isRuntimeReady())) {
+                throw new Error('Provider disconnected during runtime startup');
+            }
+            recovery.complete = true;
+            botLog('info', 'provider-startup-ready', { provider: provider.id });
+            if (providerStartupRecovery === recovery) providerStartupRecovery = null;
+        } catch (error) {
+            if (provider) {
+                provider.cancelPendingRuntimeEvents?.();
+                provider.precommitInboundBuffer?.cancel?.();
+                const wasActive = qqProviderRuntime.getCurrentProvider() === provider;
+                if (wasActive) qqProviderRuntime.clearCurrentProvider(provider);
+                if (ws === provider.ws) {
+                    if (global.bot?.ws === ws) global.bot.ws = null;
+                    ws = null;
+                }
+                if (officialProvider === provider) officialProvider = null;
+                try {
+                    await provider.stop();
+                } catch (cleanupError) {
+                    manager.trackResidualProvider(provider, cleanupError);
+                }
+                if (wasActive) {
+                    clearGroupRefreshTimer();
+                    await subscriptionService.stop().catch((cleanupError) => {
+                        botLog('error', 'subscription-startup-cleanup-failed', {
+                            code: cleanupError?.code || 'SUBSCRIPTION_STOP_FAILED'
+                        });
+                    });
+                }
+            }
+            if (!recovery.cancelled && !isManualClose) {
+                botLog('warn', 'provider-startup-unavailable', {
+                    provider: provider?.id || config.qqProvider,
+                    code: error?.code || 'PROVIDER_STARTUP_FAILED'
+                });
+                schedule();
+            }
+        }
+    };
+    recovery.promise = attempt();
+    return recovery.promise;
+}
+
 async function initializeBot(options = {}) {
     const mode = options.mode === 'probe' ? 'probe' : 'normal';
     try {
@@ -1435,19 +1570,7 @@ async function initializeBot(options = {}) {
         if (mode !== 'probe') {
             qqProviderRuntime.providerRuntimeManager.probeStatus = null;
             const releaseEpoch = await armCurrentReleaseEpoch();
-            if (config.qqProvider === 'official') {
-                await createOfficialProviderConnection({ startRuntime: false });
-            } else {
-                createWebSocketConnection({ startRuntime: false });
-                await qqProviderRuntime.getCurrentProvider()?.waitUntilReady?.(15000);
-            }
-            botLog('info', 'startup-step', {
-                step: config.qqProvider === 'official' ? 'qq-official-provider' : 'napcat-websocket'
-            });
-            releaseCurrentEpoch(releaseEpoch);
-            await startActiveProviderRuntime(qqProviderRuntime.getCurrentProvider(), config.getSnapshot?.() || null, {
-                resumeOperations: true
-            });
+            await startProviderStartupRecovery(releaseEpoch, options);
             requestApprovalService.start?.();
             botLog('info', 'startup-step', {
                 step: 'request-approval-cleanup-scheduler'
@@ -1466,7 +1589,7 @@ async function initializeBot(options = {}) {
         }
 
         botLog('info', 'startup', {
-            phase: 'ready',
+            phase: providerStartupRecovery ? 'degraded' : 'ready',
             mode
         });
     } catch (error) {
@@ -1611,10 +1734,17 @@ module.exports = {
         armCurrentReleaseEpoch,
         bindCurrentReleaseEpoch,
         preflightSelectedProvider,
+        startProviderStartupRecovery,
+        stopProviderStartupRecovery,
         getRuntimeState() {
             return { ws, officialProvider, activeProvider: qqProviderRuntime.getCurrentProvider() };
         },
         resetRuntimeState() {
+            if (providerStartupRecovery) {
+                providerStartupRecovery.cancelled = true;
+                clearTimeout(providerStartupRecovery.timer);
+                providerStartupRecovery = null;
+            }
             ws = null;
             officialProvider = null;
             reconnectCount = 0;
