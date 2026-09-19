@@ -33,6 +33,7 @@ function makeWs() {
 async function run() {
     const calls = []
     let botRole = 'admin'
+    let mixedSystemRequests = false
     notificationService.callAction = async (_ws, action, params) => {
         calls.push({ action, params })
         if (action === 'send_private_msg') {
@@ -94,6 +95,10 @@ async function run() {
             }
         }
         if (action === 'get_group_system_msg' || action === 'get_group_ignored_notifies') {
+            if (mixedSystemRequests) return { status: 'ok', retcode: 0, data: [
+                { group_id: 1000, request_id: 7, requester_uin: 321 },
+                { group_id: 2000, request_id: 8, requester_uin: 999 }
+            ] }
             return {
                 status: 'ok',
                 retcode: 0,
@@ -287,6 +292,12 @@ async function run() {
     const systemResult = await toolRegistry.executeToolPlan(systemPlan, { ws: makeWs(), actor: adminActor })
     assert.ok(systemResult.message.includes('系统消息'))
     assert.strictEqual(systemResult.data.joinRequests.length, 1)
+    mixedSystemRequests = true
+    const mixedResult = await toolRegistry.executeToolPlan(systemPlan, { ws: makeWs(), actor: adminActor })
+    assert.ok(mixedResult.message.includes('1 条'))
+    assert.strictEqual(mixedResult.data.unclassifiedRequests.length, 1)
+    assert.strictEqual(mixedResult.data.joinRequests.length, 0)
+    mixedSystemRequests = false
 
     const ignoredPlan = toolRegistry.normalizeToolIntent({
         name: 'qq.get_group_ignored_notifies',

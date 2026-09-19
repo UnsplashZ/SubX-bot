@@ -1,27 +1,19 @@
-# Default NapCat deployment template used by the interactive setup helper.
-# Application settings live in config/config.yaml. Host ports and image
-# references can be overridden through the installation root .env file.
+# Default LLBot deployment template. Run setup.sh to select LLBot, NapCat or an existing OneBot service.
+# Application settings remain in config/config.yaml; LLBot account settings live in llbot/data.
 services:
-  napcat:
-    image: ${BILI_NAPCAT_IMAGE:-mlikiowa/napcat-docker:latest}
-    container_name: napcat
+  llbot:
+    image: ${BILI_LLBOT_IMAGE:-linyuchen/llbot:latest}
     restart: always
     init: true
     stop_grace_period: 30s
-    ports:
-      - "${BILI_NAPCAT_WEBUI_HOST_PORT:-6099}:6099"
-      - "${BILI_NAPCAT_WS_HOST_PORT:-3001}:3001"
     environment:
       TZ: Asia/Shanghai
-      WS_ENABLE: "true"
-      HTTP_ENABLE: "true"
+      AUTO_LOGIN_QQ: ${BILI_BOT_QQ:-}
+    ports:
+      - "127.0.0.1:${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080"
     volumes:
-      - type: bind
-        source: ./napcat/config
-        target: /app/napcat/config
-      - type: bind
-        source: ./napcat/qq
-        target: /app/.config/QQ
+      - ./llbot/data:/app/llbot/data
+      - ./onebot/media:/app/.config/QQ/tmp
     networks:
       - bot_network
 
@@ -33,7 +25,7 @@ services:
     init: true
     stop_grace_period: 420s
     depends_on:
-      napcat:
+      llbot:
         condition: service_started
     environment:
       TZ: Asia/Shanghai
@@ -51,8 +43,8 @@ services:
         source: ./fonts/custom
         target: /app/fonts/custom
       - type: bind
-        source: ./napcat/qq
-        target: /app/.config/QQ
+        source: ./onebot/media
+        target: /app/.config/QQ/tmp
     ports:
       - "${BILI_DASHBOARD_HOST_PORT:-3000}:3000"
     healthcheck:

@@ -208,7 +208,17 @@ class QqGroupAdminService {
     }
 
     filterSystemMessagesByGroup(data, groupId) {
-        const invited = Array.isArray(data.InvitedRequest) ? data.InvitedRequest : []
+        // SnowLuma returns a mixed inbox without an explicit request subtype.
+        // Preserve it without guessing from inviter IDs or opaque request flags.
+        if (Array.isArray(data)) {
+            return {
+                invitedRequests: [],
+                joinRequests: [],
+                unclassifiedRequests: data.map(normalizeSystemRequest).filter((item) => item.groupId === groupId)
+            }
+        }
+        const invited = Array.isArray(data.invited_requests) ? data.invited_requests
+            : Array.isArray(data.InvitedRequest) ? data.InvitedRequest : []
         const joins = Array.isArray(data.join_requests) ? data.join_requests : []
         return {
             invitedRequests: invited.map(normalizeSystemRequest).filter((item) => item.groupId === groupId),

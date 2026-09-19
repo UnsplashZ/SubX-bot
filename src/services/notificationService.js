@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const config = require('../config');
 const qqProviderRuntime = require('../providers/qq/runtime');
 const { botOperationRegistry } = require('./runtime/botOperationRegistry');
+const { detectImplementation, adaptAction } = require('../providers/qq/onebotCompatibility');
 
 const TEMP_IMAGE_CLEANUP_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
 const TEMP_IMAGE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1h
@@ -78,6 +79,27 @@ class NotificationService {
      * @returns {Promise<Object>} - 原始 OneBot 响应 payload
      */
     static callAction(ws, action, params = {}, logPrefix = 'NotificationService', timeoutMs = 5000) {
+        if (getOfficialProvider(ws) || !['_del_group_notice', 'get_group_ignored_notifies'].includes(action)) {
+            return this._callActionRaw(ws, action, params, logPrefix, timeoutMs);
+        }
+        return trackRuntimePromise((async () => {
+            const deadline = Date.now() + timeoutMs;
+            const detection = detectImplementation(getNapcatWebSocket(ws),
+                (probe, args) => this._callActionRaw(ws, probe, args, logPrefix, Math.min(timeoutMs, 3000)));
+            let timer;
+            let implementation;
+            try {
+                implementation = await Promise.race([detection, new Promise((_, reject) => {
+                    timer = setTimeout(() => reject(new Error(`Action timeout after ${timeoutMs}ms: ${action}`)), timeoutMs);
+                })]);
+            } finally { clearTimeout(timer); }
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) throw new Error(`Action timeout after ${timeoutMs}ms: ${action}`);
+            return this._callActionRaw(ws, adaptAction(implementation, action), params, logPrefix, remaining);
+        })());
+    }
+
+    static _callActionRaw(ws, action, params = {}, logPrefix = 'NotificationService', timeoutMs = 5000) {
         const officialProvider = getOfficialProvider(ws);
         if (officialProvider) {
             return trackRuntimePromise(officialProvider.callAction(action, params, {

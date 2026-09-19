@@ -10,6 +10,7 @@ const requestApprovalService = require('../../services/requestApprovalService')
 const { normalizeAgentConfig, getEffectiveAgentConfigForGroup } = require('../config/agentConfig')
 const longTermStore = require('../memory/longTermStore')
 const qqProviderRuntime = require('../../providers/qq/runtime')
+const { getImplementation } = require('../../providers/qq/onebotCompatibility')
 
 const OFFICIAL_ALLOWED_QQ_TOOLS = new Set([
     'qq.delete_message'
@@ -25,6 +26,8 @@ function isOfficialProviderActive(context = {}) {
 }
 
 function isToolSupportedByProvider(name, context = {}) {
+    const provider = context.provider || context.ws || qqProviderRuntime.getCurrentProvider()
+    if (name === 'qq.get_group_ignored_notifies' && getImplementation(provider) === 'llbot') return false
     if (!isOfficialProviderActive(context)) return true
     const toolName = String(name || '')
     if (OFFICIAL_HIDDEN_TOOLS.has(toolName)) return false
@@ -606,14 +609,16 @@ function formatGroupNotices(items, args) {
 function formatSystemMessages(result, args, label) {
     const invitedRequests = Array.isArray(result?.invitedRequests) ? result.invitedRequests : []
     const joinRequests = Array.isArray(result?.joinRequests) ? result.joinRequests : []
-    const total = invitedRequests.length + joinRequests.length
-    if (total === 0) return { message: `群 ${args.groupId} 没有${label}。`, data: { groupId: args.groupId, invitedRequests, joinRequests } }
+    const unclassifiedRequests = Array.isArray(result?.unclassifiedRequests) ? result.unclassifiedRequests : []
+    const data = { groupId: args.groupId, invitedRequests, joinRequests, unclassifiedRequests }
+    const total = invitedRequests.length + joinRequests.length + unclassifiedRequests.length
+    if (total === 0) return { message: `群 ${args.groupId} 没有${label}。`, data }
     return {
         message: [
             `群 ${args.groupId} ${label} ${total} 条`,
-            formatList([...joinRequests, ...invitedRequests], (item) => `${item.requestId || '-'}:${item.userId || item.requesterNick || item.invitorUin}${item.message ? `「${compactText(item.message, 20)}」` : ''}`, 8)
+            formatList([...joinRequests, ...invitedRequests, ...unclassifiedRequests], (item) => `${item.requestId || '-'}:${item.userId || item.requesterNick || item.invitorUin}${item.message ? `「${compactText(item.message, 20)}」` : ''}`, 8)
         ].join('：'),
-        data: { groupId: args.groupId, invitedRequests, joinRequests }
+        data
     }
 }
 

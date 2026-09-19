@@ -349,6 +349,7 @@ describe('config CLI', function () {
             assert.strictEqual(result.provider, 'official')
             const rendered = YAML.parse(fs.readFileSync(output, 'utf8'))
             assert.strictEqual(rendered.services.napcat, undefined)
+            assert.strictEqual(rendered.services.llbot, undefined)
             assert.strictEqual(rendered.services['bili-qq-bot'].depends_on, undefined)
             assert.deepStrictEqual(rendered.services['bili-qq-bot'].labels, { 'user.owner': 'preserve' })
             assert.deepStrictEqual(rendered.services['bili-qq-bot'].deploy, existing.services['bili-qq-bot'].deploy)
@@ -356,11 +357,11 @@ describe('config CLI', function () {
             assert.deepStrictEqual(rendered.networks['user-edge'], { external: true })
 
             const mutations = [
-                value => { value.services.napcat.environment.PLUGIN_ENABLED = 'true' },
-                value => { value.services.napcat.volumes.push({ type: 'bind', source: './plugin', target: '/app/plugin' }) },
-                value => { value.services.napcat.volumes.push({ type: 'bind', source: './other-qq', target: '/app/.config/QQ' }) },
-                value => { value.services.napcat.networks.push('plugin-network') },
-                value => { value.services.napcat.labels = { plugin: 'true' } }
+                value => { value.services.llbot.environment.PLUGIN_ENABLED = 'true' },
+                value => { value.services.llbot.volumes.push({ type: 'bind', source: './plugin', target: '/app/plugin' }) },
+                value => { value.services.llbot.volumes.push({ type: 'bind', source: './other-qq', target: '/app/.config/QQ' }) },
+                value => { value.services.llbot.networks.push('plugin-network') },
+                value => { value.services.llbot.labels = { plugin: 'true' } }
             ]
             for (const mutate of mutations) {
                 const unknown = JSON.parse(JSON.stringify(existing))
@@ -374,7 +375,7 @@ describe('config CLI', function () {
             }
 
             const explicit = JSON.parse(JSON.stringify(existing))
-            explicit.services.napcat.ports = ['9999:3001']
+            explicit.services.llbot.ports = ['9999:3080']
             fs.writeFileSync(existingCompose, YAML.stringify(explicit), { mode: 0o600 })
             assert.doesNotThrow(() => run([
                 'render-compose', '--config', configPath, '--existing-compose', existingCompose,
@@ -418,7 +419,7 @@ describe('config CLI', function () {
             ], { validator })
             const rendered = YAML.parse(fs.readFileSync(output, 'utf8'))
             assert.deepStrictEqual(rendered.services['bili-qq-bot'].ports, ['4000:3000'])
-            assert.ok(JSON.stringify(rendered.services['bili-qq-bot'].healthcheck).includes('127.0.0.1:3000/api/ready'))
+            assert.ok(JSON.stringify(rendered.services['bili-qq-bot'].healthcheck).includes('127.0.0.1:3000/api/live'))
             assert.ok(rendered.networks['new-managed'])
             assert.strictEqual(rendered.networks['old-managed'], undefined)
             assert.ok(rendered.services['bili-qq-bot'].networks.includes('new-managed'))

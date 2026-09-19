@@ -239,10 +239,13 @@ function matchesKnownSetupTemplate(existingCompose) {
     if (!isPlainObject(existingCompose?.services)) return false
     const bot = existingCompose.services[BOT_SERVICE]
     const napcat = existingCompose.services[NAPCAT_SERVICE]
-    if (!isPlainObject(bot) || !isPlainObject(napcat)) return false
+    const llbot = existingCompose.services.llbot
+    const isLlbot = isPlainObject(llbot) && !napcat
+    if (!isPlainObject(bot) || (!isPlainObject(napcat) && !isLlbot)) return false
     const requiredBotVolumes = [
         ['./config', '/app/config'], ['./data', '/app/data'], ['./logs', '/app/logs'],
-        ['./fonts/custom', '/app/fonts/custom'], ['./napcat/qq', '/app/.config/QQ']
+        ['./fonts/custom', '/app/fonts/custom'],
+        isLlbot ? ['./onebot/media', '/app/.config/QQ/tmp'] : ['./napcat/qq', '/app/.config/QQ']
     ]
     const hasUniqueManagedVolumes = (values, required) => required.every(([source, target]) => {
         const matches = (Array.isArray(values) ? values : []).filter((item) => {
@@ -270,17 +273,25 @@ function matchesKnownSetupTemplate(existingCompose) {
         ],
         networks: ['bot_network']
     }
+    const expectedLlbot = {
+        image: '${BILI_LLBOT_IMAGE:-linyuchen/llbot:latest}',
+        restart: 'always', init: true, stop_grace_period: '30s',
+        environment: { TZ: 'Asia/Shanghai', AUTO_LOGIN_QQ: '${BILI_BOT_QQ:-}' },
+        ports: ['127.0.0.1:${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080'],
+        volumes: ['./llbot/data:/app/llbot/data', './onebot/media:/app/.config/QQ/tmp'],
+        networks: ['bot_network']
+    }
     const expectedHealthcheck = {
         test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/api/live') .then(r=>{if(!r.ok)process.exit(1)}) .catch(()=>process.exit(1))"],
         interval: '10s', timeout: '5s', retries: 12, start_period: '30s'
     }
     return bot.image === '${BILI_BOT_IMAGE:-unsplash/bili-qq-bot:latest}' &&
-        canonicalValue(napcat) === canonicalValue(expectedNapcat) &&
+        canonicalValue(isLlbot ? llbot : napcat) === canonicalValue(isLlbot ? expectedLlbot : expectedNapcat) &&
         canonicalValue(bot.ports) === canonicalValue(['${BILI_DASHBOARD_HOST_PORT:-3000}:3000']) &&
         hasUniqueManagedVolumes(bot.volumes, requiredBotVolumes) &&
         canonicalValue(bot.healthcheck) === canonicalValue(expectedHealthcheck) &&
         isPlainObject(bot.depends_on) &&
-        canonicalValue(bot.depends_on.napcat) === canonicalValue({ condition: 'service_started' }) &&
+        canonicalValue(bot.depends_on[isLlbot ? 'llbot' : 'napcat']) === canonicalValue({ condition: 'service_started' }) &&
         networkNames(bot.networks).includes('bot_network') &&
         canonicalValue(existingCompose.networks?.bot_network) === canonicalValue({ driver: 'bridge' })
 }
@@ -302,7 +313,8 @@ function reconcileNapcatDependency(dependsOn, enabled) {
     return next
 }
 
-function desiredDeployment(config, options = {}) {
+function desiredDeployment(config, options = {}, existingCompose = null) {
+    const externalGateway = Boolean(existingCompose?.services?.[BOT_SERVICE] && !existingCompose.services.napcat)
     const ports = config.deployment?.ports || {}
     const mounts = config.deployment?.mounts || {}
     const network = config.deployment?.network || {}
@@ -313,7 +325,7 @@ function desiredDeployment(config, options = {}) {
         `${mounts.logs || './logs'}:/app/logs`,
         `${mounts.fonts || './fonts/custom'}:/app/fonts/custom`
     ]
-    if (config.qq.provider === 'napcat') botVolumes.push(`${mounts.napcatQq || './napcat/qq'}:/app/.config/QQ`)
+    if (config.qq.provider === 'napcat' && !externalGateway) botVolumes.push(`${mounts.napcatQq || './napcat/qq'}:/app/.config/QQ`)
     return {
         networkName: network.name || 'bot_network',
         networkExternal: Boolean(network.external),
@@ -323,7 +335,7 @@ function desiredDeployment(config, options = {}) {
             ports: [stringifyPort(dashboardHost, DASHBOARD_INGRESS_PORT)],
             volumes: botVolumes
         },
-        napcat: config.qq.provider === 'napcat' ? {
+        napcat: config.qq.provider === 'napcat' && !externalGateway ? {
             image: options.napcatImage || null,
             ports: [
                 stringifyPort(ports.napcatWebuiHost || 6099, 6099),
@@ -338,7 +350,7 @@ function desiredDeployment(config, options = {}) {
 }
 
 function analyzeDeployment(config, existingCompose, options = {}) {
-    const desired = desiredDeployment(config, options)
+    const desired = desiredDeployment(config, options, existingCompose)
     const existingBot = existingCompose?.services?.[BOT_SERVICE]
     const existingNapcat = existingCompose?.services?.[NAPCAT_SERVICE]
     const changes = []
@@ -386,6 +398,10 @@ function analyzeDeployment(config, existingCompose, options = {}) {
         ownershipRequired = true
         changes.push('/services/napcat')
     }
+    if (config.qq.provider === 'official' && existingCompose?.services?.llbot) {
+        ownershipRequired = true
+        changes.push('/services/llbot', '/services/bili-qq-bot/depends_on/llbot')
+    }
     const botDependsOnNapcat = hasNapcatDependency(existingBot?.depends_on)
     if (Boolean(desired.napcat) !== botDependsOnNapcat) {
         if (!desired.napcat && botDependsOnNapcat) ownershipRequired = true
@@ -416,7 +432,7 @@ function analyzeDeployment(config, existingCompose, options = {}) {
 }
 
 function buildCompose(config, existingCompose, options = {}) {
-    const desired = desiredDeployment(config, options)
+    const desired = desiredDeployment(config, options, existingCompose)
     const ownership = readOwnership(options.ownershipPath)
     const plan = analyzeDeployment(config, existingCompose, options)
     const adoptKnownTemplate = Boolean(options.adoptKnownTemplate && matchesKnownSetupTemplate(existingCompose))
@@ -433,11 +449,24 @@ function buildCompose(config, existingCompose, options = {}) {
 
     const compose = clone(existingCompose || {})
     compose.services = isPlainObject(compose.services) ? compose.services : {}
+    if (config.qq.provider === 'official' && compose.services.llbot) {
+        if (!adoptionAllowed && !ownership?.ownedPointers?.includes('/services/llbot')) {
+            throw new MigrationError('COMPOSE_OWNERSHIP_REQUIRED')
+        }
+        delete compose.services.llbot
+        const dependencies = compose.services[BOT_SERVICE]?.depends_on
+        if (Array.isArray(dependencies)) compose.services[BOT_SERVICE].depends_on = dependencies.filter(name => name !== 'llbot')
+        else if (isPlainObject(dependencies)) delete dependencies.llbot
+    }
     const previousManagedNetworks = managedNetworkNames(ownership)
     for (const networkName of previousManagedNetworks) {
         if (networkName === desired.networkName) continue
         removeNetworkAttachment(compose.services[BOT_SERVICE], networkName)
         removeNetworkAttachment(compose.services[NAPCAT_SERVICE], networkName)
+        if (compose.services.llbot && ownership?.ownedPointers?.includes('/services/llbot')) {
+            removeNetworkAttachment(compose.services.llbot, networkName)
+            addNetworkAttachment(compose.services.llbot, desired.networkName)
+        }
         const stillAttached = Object.values(compose.services).some((service) => networkNames(service?.networks).includes(networkName))
         if (stillAttached) throw new MigrationError('COMPOSE_MANAGED_NETWORK_IN_USE')
         if (isPlainObject(compose.networks)) delete compose.networks[networkName]
@@ -463,7 +492,7 @@ function buildCompose(config, existingCompose, options = {}) {
     }
     bot.volumes = mergeManagedList(existingBotVolumes, desired.bot.volumes, (item) => parseVolumeTarget(item).target)
     bot.healthcheck = {
-        test: ['CMD', 'node', '-e', `fetch("http://127.0.0.1:${desired.bot.healthPort}/api/ready").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))`],
+        test: ['CMD', 'node', '-e', `fetch("http://127.0.0.1:${desired.bot.healthPort}/api/live").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))`],
         interval: '10s',
         timeout: '5s',
         retries: 6,
@@ -508,6 +537,9 @@ function buildCompose(config, existingCompose, options = {}) {
             '/services/napcat/volumes',
             '/services/napcat/networks'
         )
+    }
+    if (compose.services.llbot && (adoptKnownTemplate || ownership?.ownedPointers?.includes('/services/llbot'))) {
+        ownedPointers.push('/services/llbot', '/services/bili-qq-bot/depends_on/llbot')
     }
     assertOwnershipCas(existingCompose || {}, compose, ownership, { ...options, adoptExisting: adoptionAllowed })
     return {

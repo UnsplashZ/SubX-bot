@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 # Product contract:
-# - Fresh directory: collect NapCat settings, generate config/config.yaml, and start containers.
+# - Fresh directory: select a OneBot implementation, generate config/config.yaml, and start containers.
 # - Existing installation: preserve all deployment/config/data files and only pull/recreate containers.
 
 RED='\033[0;31m'
@@ -13,6 +13,12 @@ NC='\033[0m'
 
 BOT_IMAGE_DEFAULT='unsplash/bili-qq-bot:latest'
 NAPCAT_IMAGE_DEFAULT='mlikiowa/napcat-docker:latest'
+LLBOT_IMAGE_DEFAULT='linyuchen/llbot:latest'
+QQ_IMPLEMENTATION='llbot'
+QQ_SERVICE='llbot'
+LLBOT_WEBUI_PASSWORD=''
+OFFICIAL_APP_ID=''
+OFFICIAL_CLIENT_SECRET=''
 COMPOSE_FILE=''
 SETUP_OPERATOR_UID=''
 SETUP_OPERATOR_GID=''
@@ -73,12 +79,32 @@ validate_image_reference() {
 
 validate_ws_token() {
     local value="$1"
-    [[ "$value" =~ ^[A-Za-z0-9._~-]+$ ]] || die "NapCat WebSocket Token 仅支持字母、数字及 . _ ~ -。"
+    [[ "$value" =~ ^[A-Za-z0-9._~-]+$ ]] || die "OneBot WebSocket Token 仅支持字母、数字及 . _ ~ -。"
 }
 
 validate_ws_url() {
     local value="$1"
-    [[ "$value" =~ ^wss?://[^[:space:]]+$ ]] || die "NapCat WebSocket 地址必须以 ws:// 或 wss:// 开头，且不能包含空白字符。"
+    [[ "$value" =~ ^wss?://[^[:space:]]+$ ]] || die "OneBot WebSocket 地址必须以 ws:// 或 wss:// 开头，且不能包含空白字符。"
+}
+
+select_qq_implementation() {
+    echo 'QQ 接入实现：'
+    echo '1) LLBot（默认，Docker 直连模式，需要 LLBot Auth Token）'
+    echo '2) NapCat（Docker）'
+    echo '3) 已有 OneBot v11 服务（如 SnowLuma；不安装该服务）'
+    echo '4) QQ 官方机器人（OpenAPI，不安装 QQ 接入容器）'
+    local choice
+    read -r -p '请选择 [1/2/3/4，默认 1]: ' choice
+    case "${choice:-1}" in
+        1)
+            QQ_IMPLEMENTATION='llbot'; QQ_SERVICE='llbot'
+            warn 'LLBot 不支持单独查询已过滤的入群申请。群管理兼容需要包含 OneBot 兼容层的新版本 Bot 镜像。'
+            ;;
+        2) QQ_IMPLEMENTATION='napcat'; QQ_SERVICE='napcat' ;;
+        3) QQ_IMPLEMENTATION='external'; QQ_SERVICE='' ;;
+        4) QQ_IMPLEMENTATION='official'; QQ_SERVICE='' ;;
+        *) die '无效的 QQ 接入选项。' ;;
+    esac
 }
 
 resolve_setup_operator() {
@@ -110,6 +136,8 @@ prepare_install_directories() {
         fonts/custom
         napcat/config
         napcat/qq
+        llbot/data
+        onebot/media
         logs
     )
 
@@ -143,6 +171,8 @@ prepare_container_bind_mounts() {
         fonts/custom
         napcat/config
         napcat/qq
+        llbot/data
+        onebot/media
         logs
     )
 
@@ -210,7 +240,7 @@ download_with_fallback() {
     return 1
 }
 
-write_compose_template() {
+write_napcat_compose_template() {
     local output_file="$1"
     cat > "$output_file" <<'EOF'
 services:
@@ -289,6 +319,59 @@ networks:
 EOF
 }
 
+write_compose_template() {
+    local output_file="$1"
+    if [ "$QQ_IMPLEMENTATION" = 'napcat' ]; then
+        write_napcat_compose_template "$output_file"
+        return
+    fi
+    local base_file
+    base_file=$(mktemp "${output_file}.base.XXXXXX")
+    write_napcat_compose_template "$base_file"
+    {
+        echo 'services:'
+        if [ "$QQ_IMPLEMENTATION" = 'llbot' ]; then
+            cat <<'EOF'
+  llbot:
+    image: ${BILI_LLBOT_IMAGE:-linyuchen/llbot:latest}
+    restart: always
+    init: true
+    stop_grace_period: 30s
+    environment:
+      TZ: Asia/Shanghai
+      AUTO_LOGIN_QQ: ${BILI_BOT_QQ:-}
+    ports:
+      - "127.0.0.1:${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080"
+    volumes:
+      - ./llbot/data:/app/llbot/data
+      - ./onebot/media:/app/.config/QQ/tmp
+    networks:
+      - bot_network
+
+EOF
+        fi
+        awk -v implementation="$QQ_IMPLEMENTATION" '
+            /^  bili-qq-bot:/ { emit = 1 }
+            !emit { next }
+            /^    depends_on:/ {
+                if (implementation == "llbot") {
+                    print "    depends_on:"
+                    print "      llbot:"
+                    print "        condition: service_started"
+                }
+                skip = 1
+                next
+            }
+            skip && /^    [a-z]/ { skip = 0 }
+            skip { next }
+            /source: .\/napcat\/qq/ { sub("./napcat/qq", "./onebot/media") }
+            /target: \/app\/\.config\/QQ$/ { sub("/app/.config/QQ", "/app/.config/QQ/tmp") }
+            { print }
+        ' "$base_file"
+    } > "$output_file"
+    rm -f "$base_file"
+}
+
 compose() {
     local compose_args=()
     if [ -n "$COMPOSE_FILE" ]; then
@@ -332,11 +415,6 @@ prepare_compose_file() {
         return 0
     fi
 
-    if [ -f "$script_dir/docker-compose.yml" ] && [ "$script_dir/docker-compose.yml" != "$compose_file" ]; then
-        cp "$script_dir/docker-compose.yml" "$compose_file"
-        return 0
-    fi
-
     local temp_file
     temp_file=$(mktemp "${compose_file}.tmp.XXXXXX")
     write_compose_template "$temp_file"
@@ -376,10 +454,12 @@ wait_for_bot_state() {
         case "$state" in
             healthy|running)
                 if [ "$require_ready" != '1' ]; then
-                    return 0
-                fi
-                if docker exec "$container_id" node -e \
-                    "fetch('http://127.0.0.1:3000/api/ready').then(r => { if (!r.ok) process.exit(1); return r.json() }).then(body => { if (body.ready !== true) process.exit(1) }).catch(() => process.exit(1))" \
+                    if docker exec "$container_id" node -e \
+                        "fetch('http://127.0.0.1:3000/api/live', { signal: AbortSignal.timeout(3000) }).then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))" >/dev/null 2>&1; then
+                        return 0
+                    fi
+                elif docker exec "$container_id" node -e \
+                    "fetch('http://127.0.0.1:3000/api/ready', { signal: AbortSignal.timeout(3000) }).then(r => { if (!r.ok) process.exit(1); return r.json() }).then(body => { if (body.ready !== true) process.exit(1) }).catch(() => process.exit(1))" \
                     >/dev/null 2>&1; then
                     return 0
                 fi
@@ -391,28 +471,37 @@ wait_for_bot_state() {
     return 1
 }
 
+verify_management_and_report_qq() {
+    if ! wait_for_bot_state 0 "${BILI_SETUP_LIVE_TIMEOUT:-180}"; then
+        compose ps || true
+        die 'Bot 管理面板未在规定时间内进入健康状态，请检查 docker logs bili-qq-bot。'
+    fi
+    if ! wait_for_bot_state 1 "${BILI_SETUP_READY_TIMEOUT:-15}"; then
+        wait_for_bot_state 0 5 || die 'Bot 管理面板不可用，请检查 docker logs bili-qq-bot。'
+        warn '管理面板已启动，但 QQ 接入尚未就绪。可登录 WebUI 修改连接配置或切换官方入口；Bot 会在后台重试，不会因 QQ 离线而重启。'
+    fi
+}
+
 update_existing_containers() {
     info "检测到已有安装，仅更新现有容器。"
     info "校验现有 Compose 配置"
     compose config -q
 
     echo "拉取部署镜像..."
-    compose pull
+    compose pull bili-qq-bot
 
-    info "先启动 NapCat 并等待登录"
-    compose up -d napcat
-    warn "如尚未登录，请在 180 秒内完成 QQ 扫码；二维码可通过 docker logs -f napcat 查看。"
-    if ! wait_for_napcat_login 180; then
-        compose ps napcat || true
-        die "NapCat 未在规定时间内完成登录，请执行 docker logs -f napcat 查看二维码后重试。"
-    fi
+    local services
+    services=$(compose config --services)
+    QQ_SERVICE=''
+    if printf '%s\n' "$services" | grep -qx 'llbot'; then QQ_SERVICE='llbot';
+    elif printf '%s\n' "$services" | grep -qx 'napcat'; then QQ_SERVICE='napcat'; fi
+    [ -z "$QQ_SERVICE" ] || compose pull "$QQ_SERVICE" || warn 'QQ 接入镜像拉取失败，仍启动管理面板。'
+    start_qq_service
+    [ -f config/config.yaml ] || warn '检测到旧版配置：由 Bot 启动时迁移。'
 
-    info "重建并启动全部容器"
-    compose up -d
-    if ! wait_for_bot_state 1 "${BILI_SETUP_READY_TIMEOUT:-180}"; then
-        compose ps || true
-        die "Bot 未在规定时间内进入 ready 状态，请检查 docker logs bili-qq-bot。"
-    fi
+    info "重建并启动 Bot 管理面板"
+    compose up -d --no-deps bili-qq-bot
+    verify_management_and_report_qq
     compose ps
 
     echo
@@ -429,9 +518,62 @@ BILI_NAPCAT_IMAGE=$NAPCAT_IMAGE_DEFAULT
 BILI_DASHBOARD_HOST_PORT=$dashboard_port
 BILI_NAPCAT_WEBUI_HOST_PORT=6099
 BILI_NAPCAT_WS_HOST_PORT=3001
+BILI_LLBOT_IMAGE=$LLBOT_IMAGE_DEFAULT
+BILI_LLBOT_WEBUI_HOST_PORT=3080
+BILI_QQ_IMPLEMENTATION=$QQ_IMPLEMENTATION
 EOF
     set_setup_operator_ownership "$env_file"
     chmod 600 "$env_file"
+}
+
+write_llbot_config() {
+    local install_dir="$1" bot_qq="$2" ws_token="$3"
+    LLBOT_WEBUI_PASSWORD=$(random_token)
+    cat > "$install_dir/llbot/data/config_$bot_qq.json" <<EOF
+{
+  "webui": { "enable": true, "host": "0.0.0.0", "port": 3080 },
+  "ob11": {
+    "enable": true,
+    "connect": [{
+      "type": "ws", "enable": true, "host": "0.0.0.0", "port": 3001,
+      "token": "$ws_token", "heartInterval": 30000,
+      "messageFormat": "array", "reportSelfMessage": false,
+      "reportOfflineMessage": false, "debug": false
+    }]
+  },
+  "milky": { "enable": false }, "satori": { "enable": false },
+  "ffmpeg": "/usr/bin/ffmpeg"
+}
+EOF
+    printf '%s\n' "$LLBOT_WEBUI_PASSWORD" > "$install_dir/llbot/data/webui_token.txt"
+    printf 'BILI_BOT_QQ=%s\n' "$bot_qq" >> "$install_dir/.env"
+    set_container_ownership "$install_dir/llbot/data/config_$bot_qq.json" "$install_dir/llbot/data/webui_token.txt"
+    chmod 700 "$install_dir/llbot/data"
+    chmod 600 "$install_dir/llbot/data/config_$bot_qq.json" "$install_dir/llbot/data/webui_token.txt"
+}
+
+start_qq_service() {
+    case "$QQ_SERVICE" in
+        napcat)
+            compose up -d napcat || warn 'NapCat 启动失败，可在 Bot 管理面板修改接入配置。'
+            warn '请完成 QQ 扫码；二维码可通过 docker logs -f napcat 查看。'
+
+            ;;
+        llbot)
+            compose up -d llbot || warn 'LLBot 启动失败，可在 Bot 管理面板修改接入配置。'
+            warn '请打开 LLBot 面板 http://127.0.0.1:3080，录入有效 Auth Token 并扫码登录 QQ。'
+            warn '远程部署请先建立 SSH 隧道：ssh -L 3080:127.0.0.1:3080 <服务器>'
+            [ -z "$LLBOT_WEBUI_PASSWORD" ] || printf 'LLBot 面板密码: %s\n' "$LLBOT_WEBUI_PASSWORD"
+            warn '已有安装的面板密码保存在 llbot/data/webui_token.txt。'
+            ;;
+        '')
+            if [ "$QQ_IMPLEMENTATION" = 'official' ]; then
+                info '官方入口已配置；可在 Bot 管理面板补充或修改凭据。'
+            else
+                warn '请确认已有 OneBot 服务已登录，且 Bot 容器能访问配置的 WebSocket 地址。'
+            fi
+            ;;
+    esac
 }
 
 write_napcat_config() {
@@ -484,7 +626,12 @@ generate_config_yaml() {
     local agent_model="${11}"
     local agent_api_key="${12}"
 
+    local provider='napcat'
+    [ "$QQ_IMPLEMENTATION" != 'official' ] || provider='official'
     docker run --rm \
+        -e SETUP_PROVIDER="$provider" \
+        -e SETUP_OFFICIAL_APP_ID="$OFFICIAL_APP_ID" \
+        -e SETUP_OFFICIAL_CLIENT_SECRET="$OFFICIAL_CLIENT_SECRET" \
         -e SETUP_WS_URL="$ws_url" \
         -e SETUP_WS_TOKEN="$ws_token" \
         -e SETUP_ADMIN_QQ="$admin_qq" \
@@ -501,7 +648,9 @@ generate_config_yaml() {
 const fs = require("fs")
 const { run } = require("/app/src/cli/config")
 const input = {
-    provider: "napcat",
+    provider: process.env.SETUP_PROVIDER,
+    officialAppId: process.env.SETUP_OFFICIAL_APP_ID,
+    officialClientSecret: process.env.SETUP_OFFICIAL_CLIENT_SECRET,
     rootAdminQQ: process.env.SETUP_ADMIN_QQ,
     wsUrl: process.env.SETUP_WS_URL,
     wsToken: process.env.SETUP_WS_TOKEN,
@@ -519,50 +668,13 @@ const input = {
 fs.writeFileSync("/tmp/setup-config-input.json", `${JSON.stringify(input)}\n`, { mode: 0o600 })
 Promise.resolve(run([
     "init", "--output", "/install/config/config.yaml",
-    "--provider", "napcat", "--input", "/tmp/setup-config-input.json", "--force"
+    "--provider", process.env.SETUP_PROVIDER, "--input", "/tmp/setup-config-input.json", "--force"
 ])).catch((error) => {
     console.error(error && (error.code || error.message) || error)
     process.exit(1)
 })
 '
     chmod 600 "$install_dir/config/config.yaml"
-}
-
-wait_for_napcat_login() {
-    local timeout_seconds="${1:-180}"
-    local poll_seconds="${BILI_SETUP_NAPCAT_POLL_INTERVAL:-3}"
-    local started
-    local qr_block last_qr_block=''
-    started=$(date +%s)
-    while [ $(( $(date +%s) - started )) -lt "$timeout_seconds" ]; do
-        if docker exec napcat bash -lc 'exec 3<>/dev/tcp/127.0.0.1/3001' >/dev/null 2>&1; then
-            info "NapCat 已登录，WebSocket 服务已就绪。"
-            return 0
-        fi
-        qr_block=$(docker logs --tail 160 napcat 2>&1 | awk '
-            index($0, "请扫描下面的二维码") {
-                current = $0 ORS
-                capturing = 1
-                next
-            }
-            capturing {
-                current = current $0 ORS
-                if (index($0, "二维码已保存到")) {
-                    latest = current
-                    capturing = 0
-                }
-            }
-            END { printf "%s", latest }
-        ' || true)
-        if [ -n "$qr_block" ] && [ "$qr_block" != "$last_qr_block" ]; then
-            echo
-            info "NapCat 登录二维码（请使用手机 QQ 扫描）："
-            printf '%s\n' "$qr_block"
-            last_qr_block="$qr_block"
-        fi
-        sleep "$poll_seconds"
-    done
-    return 1
 }
 
 main() {
@@ -594,6 +706,8 @@ main() {
         return 0
     fi
 
+    select_qq_implementation
+
     info "[4/8] 创建目录"
     prepare_install_directories "$install_dir"
 
@@ -611,7 +725,8 @@ main() {
     write_compose_env "$install_dir/.env" "$bot_image" "$dashboard_port"
 
     echo "拉取部署镜像..."
-    BILI_BOT_IMAGE="$bot_image" compose pull
+    BILI_BOT_IMAGE="$bot_image" compose pull bili-qq-bot
+    [ -z "$QQ_SERVICE" ] || compose pull "$QQ_SERVICE" || warn 'QQ 接入镜像拉取失败，仍启动管理面板。'
     prepare_container_bind_mounts "$install_dir" "$bot_image"
 
     overwrite_config='y'
@@ -623,13 +738,32 @@ main() {
     if [ ! -f "$config_file" ] || [[ "$overwrite_config" =~ ^[Yy]$ ]]; then
         local bot_qq ws_token ws_url admin_qq allowed_origins
         local agent_enabled='false' agent_base_url='' agent_model='' agent_api_key=''
-        bot_qq=$(prompt_required "请输入 Bot QQ 号")
-        validate_qq_number "Bot QQ 号" "$bot_qq"
-        read -r -p "请输入 NapCat WebSocket Token (留空自动生成): " ws_token
-        ws_token="${ws_token:-$(random_token)}"
-        validate_ws_token "$ws_token"
-        ws_url=$(prompt_default "NapCat WebSocket 地址" "ws://napcat:3001")
-        validate_ws_url "$ws_url"
+        bot_qq=''
+        ws_url='ws://napcat:3001'
+        ws_token=''
+        if [ "$QQ_IMPLEMENTATION" = 'official' ]; then
+            read -r -p 'QQ 官方 AppID（可留空，稍后在面板配置）: ' OFFICIAL_APP_ID
+            read -r -s -p 'QQ 官方 ClientSecret（可留空，稍后在面板配置）: ' OFFICIAL_CLIENT_SECRET
+            echo
+        else
+            if [ "$QQ_IMPLEMENTATION" != 'external' ]; then
+                bot_qq=$(prompt_required "请输入 Bot QQ 号")
+                validate_qq_number "Bot QQ 号" "$bot_qq"
+            fi
+            read -r -p "请输入 OneBot WebSocket Token (新服务留空自动生成；已有服务请填实际值): " ws_token
+            if [ "$QQ_IMPLEMENTATION" != 'external' ]; then
+                ws_token="${ws_token:-$(random_token)}"
+            fi
+            [ -z "$ws_token" ] || validate_ws_token "$ws_token"
+            if [ "$QQ_IMPLEMENTATION" = 'external' ]; then
+                ws_url=$(prompt_required '已有服务的 WebSocket 地址（必须能从 Bot 容器访问）')
+                warn '媒体文件需共享：请将安装目录 onebot/media 同时挂载到接入服务的 /app/.config/QQ/tmp。'
+                warn '若服务在其他主机，须自行提供共享文件系统；否则图片和视频发送无法工作。'
+            else
+                ws_url=$(prompt_default "OneBot WebSocket 地址" "ws://$QQ_SERVICE:3001")
+            fi
+            validate_ws_url "$ws_url"
+        fi
         admin_qq=$(prompt_required "请输入管理员 QQ 号")
         validate_qq_number "管理员 QQ 号" "$admin_qq"
         dashboard_password=$(prompt_default "WebUI 面板密码" "admin")
@@ -645,7 +779,10 @@ main() {
             [ -n "$agent_api_key" ] || die "API Key 不能为空。"
         fi
 
-        write_napcat_config "$install_dir" "$bot_qq" "$ws_token"
+        case "$QQ_IMPLEMENTATION" in
+            napcat) write_napcat_config "$install_dir" "$bot_qq" "$ws_token" ;;
+            llbot) write_llbot_config "$install_dir" "$bot_qq" "$ws_token" ;;
+        esac
         generate_config_yaml \
             "$install_dir" "$bot_image" "$ws_url" "$ws_token" "$admin_qq" \
             "$dashboard_port" "$dashboard_password" "$allowed_origins" \
@@ -658,29 +795,13 @@ main() {
     info "[6/8] 校验 Compose"
     compose config -q
 
-    info "[7/8] 启动 NapCat"
-    compose up -d napcat
+    info "[7/8] 启动 QQ 接入服务"
+    start_qq_service
 
-    info "[8/8] 等待 NapCat 登录"
-    warn "请在 180 秒内完成 QQ 扫码登录；二维码可通过 docker logs -f napcat 查看。"
-    if ! wait_for_napcat_login 180; then
-        compose ps napcat || true
-        die "NapCat 未在规定时间内完成登录，请执行 docker logs -f napcat 查看二维码后重试。"
-    fi
-
-    info "启动 Bot 服务"
-    compose up -d bili-qq-bot
-    if ! wait_for_bot_state 0 "${BILI_SETUP_LIVE_TIMEOUT:-180}"; then
-        compose ps || true
-        die "Bot 容器未在规定时间内进入健康状态，请检查 docker logs bili-qq-bot。"
-    fi
+    info "[8/8] 启动 Bot 管理面板"
+    compose up -d --no-deps bili-qq-bot
+    verify_management_and_report_qq
     compose ps
-
-    info "等待 Bot 完成最终 readiness 检查"
-    if ! wait_for_bot_state 1 "${BILI_SETUP_READY_TIMEOUT:-180}"; then
-        compose ps || true
-        die "NapCat 或 Bot 未在规定时间内进入 ready 状态，请完成登录并检查 docker logs bili-qq-bot。"
-    fi
 
     echo
     info "部署完成。"

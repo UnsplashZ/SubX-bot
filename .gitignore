@@ -29,6 +29,8 @@ config/.qqOfficialClientSecret
 # Data (Runtime)
 data/*
 napcat/*
+llbot/
+onebot/
 
 # Project Logs
 application.log

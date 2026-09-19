@@ -46,7 +46,7 @@
 *   📡 **订阅推送**：内置订阅系统，支持分群订阅与同步关注分组，实时追踪 UP 主动态、视频、专栏、直播与番剧更新
 
 *   🔌 **QQ 接入 Provider**
-    *   默认兼容 OneBot / NapCat 部署
+    *   默认使用 LLBot，可选择 NapCat、已有 OneBot 或 QQ 官方入口
     *   可在 WebUI 或配置中切换 QQ Official Provider，通过官方 WSS + OpenAPI 收发消息
     *   Official 模式支持文本、图片、视频、订阅推送、基础指令、Agent 基础回复与机器人消息撤回；NapCat 专属群管能力会按 capability 自动隐藏或降级
 
@@ -126,7 +126,7 @@
 
 ## 一键快速部署
 
-运行下方命令。`setup.sh` 只有两个职责：首次安装时初始化 NapCat 与 `config/config.yaml`；再次对同一安装目录运行时，仅拉取并重建容器，保留现有 Compose、`.env`、配置和业务数据。
+运行下方命令。`setup.sh` 首次安装时选择 QQ 接入实现并生成 `config/config.yaml`；再次对同一安装目录运行时，仅拉取并重建容器，保留现有 Compose、`.env`、配置和业务数据。
 *[点我跳转到视频教程](https://www.bilibili.com/video/BV1YsrEBVEs6/ "bilibili")*
 
 ```bash
@@ -139,10 +139,23 @@ wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/Unsplash
 
 `setup.sh` 不使用 `install`、`upgrade` 或 `apply` 参数，而是根据安装目录自动选择路径：
 
-- **首次安装**：目录中没有可识别的 Compose + 配置组合时，脚本询问镜像、端口、Bot QQ、管理员、NapCat Token 和可选 Agent LLM；输入校验通过后生成 `docker-compose.yml`、`.env`、NapCat 配置与唯一的 `config/config.yaml`。
+- **首次安装**：先选择 LLBot（默认）、NapCat、已有 OneBot v11 服务或 QQ 官方入口，再填写镜像、端口、账号、管理员、WebSocket Token 和可选 Agent LLM；生成对应 Compose、接入配置与唯一的 `config/config.yaml`。
 - **已有安装更新**：当目录中存在标准 Compose 文件（`compose.yaml`、`compose.yml`、`docker-compose.yaml` 或 `docker-compose.yml`）以及 `config.yaml` 或 legacy 配置时，脚本不会重新询问或改写文件，只执行 Compose 校验、镜像拉取、容器重建和 Bot 健康检查。
 
-无论首次安装还是已有安装更新，脚本最终都要求 `/api/ready` 返回 `ready: true`，确保配置迁移、Dashboard、Provider 和运行时子系统已经就绪；否则返回失败并提示完成 NapCat 登录或查看日志。旧配置、schema 和业务数据 migration 仍由 Bot 启动时的 `ApplicationMigrationBootstrap` 自动完成，setup 不解释或修改 migration 状态。
+脚本独立启动 Bot 管理面板，不以 LLBot/NapCat 登录或鉴权成功作为前置条件。`/api/live` 检查必须通过；QQ 未连接时 `/api/ready` 返回 503，脚本提示接入未就绪，但仍完成面板部署。可立即登录 WebUI 修改连接配置或切换官方入口；Bot 在后台重试，不因 QQ 离线而退出重启。接入就绪观察默认 15 秒，可通过 `BILI_SETUP_READY_TIMEOUT` 调整。旧配置、schema 和业务数据 migration 仍由应用启动时完成。
+
+| 接入选项 | 部署与登录 |
+| --- | --- |
+| LLBot（默认） | 默认 `linyuchen/llbot:latest`，直连模式；在 LLBot 面板录入有效 Auth Token 并扫码。会话持久化在 `llbot/data`，`BILI_BOT_QQ` 用于重启自动恢复。 |
+| NapCat | 保留 NapCat 容器、账号配置与扫码方式。 |
+| QQ 官方入口 | 只部署 Bot，直接生成 official 配置；AppID / ClientSecret 可在安装时输入，也可稍后通过面板补充。 |
+| 已有 OneBot v11 | 只部署 Bot，填写从 Bot 容器可访问的 WebSocket 地址和实际 Token。SnowLuma 1.14.17 已实测登录、只读接口、群文字/图片/视频发送与回读；本次容器重启后 OneBot 未恢复，自动登录恢复未通过。 |
+
+LLBot 面板默认仅绑定服务器 `127.0.0.1:3080`。远程安装后执行 `ssh -L 3080:127.0.0.1:3080 <服务器>`，再打开本机 `http://127.0.0.1:3080`。初始面板密码由脚本生成，保存在安装目录 `llbot/data/webui_token.txt`。LLBot 的 Auth Token 获取方式见[官方文档](https://luckylillia.com)。
+
+LLBot 与已有 OneBot 模式使用 `onebot/media` 共享图片和视频文件，容器内路径为 `/app/.config/QQ/tmp`。连接已有服务时，需将同一目录挂载到该服务的相同路径；跨主机部署需要共享文件系统，单纯连通 WebSocket 不足以保证媒体发送。
+
+目前应用的 OneBot 客户端配置键仍为 `qq.provider: napcat` 和 `qq.napcat.*`，LLBot 复用此客户端，部署实现由 Compose 中的服务决定。LLBot 8.2.1 已实测通过登录、基础只读接口和群聊文字/图片/视频发送及消息回读。兼容层按连接探测实现，自动适配公告删除接口名与群邀请字段；LLBot 不支持单独查询已过滤申请，调用时明确报不支持，识别后从 Agent 工具列表隐藏。SnowLuma 的混合群请求数组保留为 `unclassifiedRequests`，不猜测邀请/申请类型。公告删除等管理写操作未在真实群执行，其中公告删除适配通过模拟接口验证。详见 [实测记录](docs/plans/2026-09-19-onebot-provider-validation.md)。
 
 ```bash
 # 首次安装和后续更新使用同一条命令，并选择同一个安装目录

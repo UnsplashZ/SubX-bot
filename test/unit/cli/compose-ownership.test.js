@@ -19,6 +19,26 @@ describe('Compose ownership safety', () => {
         fs.rmSync(root, { recursive: true, force: true })
     })
 
+    it('preserves LLBot and shared media when rendering OneBot, then removes it safely for Official', () => {
+        const YAML = require('yaml')
+        const existing = YAML.parse(fs.readFileSync(path.join(__dirname, '../../../docker-compose.yml'), 'utf8'))
+        const config = createDefaultV1Config({ jwtSecret: 'fixture-jwt' })
+        const first = buildCompose(config, existing, { adoptKnownTemplate: true })
+        assert.ok(first.compose.services.llbot)
+        assert.equal(first.compose.services.napcat, undefined)
+        assert.deepStrictEqual(first.compose.services.llbot, existing.services.llbot)
+        assert.ok(first.compose.services['bili-qq-bot'].volumes.some(v => v.target === '/app/.config/QQ/tmp'))
+        const ownershipPath = path.join(root, 'llbot-ownership.json')
+        fs.writeFileSync(ownershipPath, JSON.stringify(first.ownership), { mode: 0o600 })
+        const official = createDefaultV1Config({ jwtSecret: 'fixture-jwt', provider: 'official' })
+        const switched = buildCompose(official, first.compose, { ownershipPath })
+        assert.equal(switched.compose.services.llbot, undefined)
+        assert.equal(switched.compose.services['bili-qq-bot'].depends_on, undefined)
+        const drift = JSON.parse(JSON.stringify(first.compose))
+        drift.services.llbot.labels = { custom: 'preserve' }
+        assert.throws(() => buildCompose(official, drift, { ownershipPath }), /COMPOSE_OWNED_FIELD_DRIFT/)
+    })
+
     it('detects an ownership inode swap during fd-anchored reading', () => {
         const ownershipPath = path.join(root, 'ownership.json')
         fs.writeFileSync(ownershipPath, '{"version":1,"ownedPointers":[]}\n', { mode: 0o600 })
