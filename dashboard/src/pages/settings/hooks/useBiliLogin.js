@@ -18,6 +18,7 @@ export default function useBiliLogin({ show, setBiliGlobalStatus }) {
 
     const startQrPolling = (key, sessionId) => {
         let attempts = 0
+        let inFlight = false
         const maxAttempts = 30
 
         clearQrPolling()
@@ -27,6 +28,7 @@ export default function useBiliLogin({ show, setBiliGlobalStatus }) {
                 return
             }
 
+            if (inFlight) return
             attempts++
 
             if (attempts > maxAttempts) {
@@ -38,6 +40,7 @@ export default function useBiliLogin({ show, setBiliGlobalStatus }) {
                 return
             }
 
+            inFlight = true
             try {
                 const statusRes = await api.post('/api/bili/check-login', {
                     key
@@ -72,6 +75,12 @@ export default function useBiliLogin({ show, setBiliGlobalStatus }) {
                         })
                         show(newStatus.data.message || '登录状态获取失败', 'error')
                     }
+                } else if (statusRes.data.status === 'error' && statusRes.data.code !== 86038) {
+                    clearInterval(interval)
+                    qrPollIntervalRef.current = null
+                    setBiliLoading(false)
+                    setIsQrModalOpen(false)
+                    show(statusRes.data.message || 'B站登录失败，请重试', 'error')
                 } else if (statusRes.data.status === 'expired' || (statusRes.data.status === 'error' && statusRes.data.code === 86038)) {
                     clearInterval(interval)
                     qrPollIntervalRef.current = null
@@ -90,6 +99,8 @@ export default function useBiliLogin({ show, setBiliGlobalStatus }) {
                 console.error('Login polling error:', error)
                 setIsQrModalOpen(false)
                 show('登录检查失败', 'error')
+            } finally {
+                inFlight = false
             }
         }, 2000)
 

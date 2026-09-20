@@ -172,6 +172,21 @@ export default function useSettingsData(show) {
         return () => clearTimeout(timer)
     }, [generalConfig, videoDownloadConfig, qqProviderConfig, loading, recoveryRequired, recoveringConfig, reloadingConfig, show])
 
+    useEffect(() => {
+        return () => {
+            const snapshot = latestMergedRef.current
+            if (!snapshot || JSON.stringify(snapshot) === lastSyncedRef.current) return
+            saveChainRef.current = saveChainRef.current.then(async () => {
+                if (JSON.stringify(snapshot) === lastSyncedRef.current) return
+                try {
+                    await applyConfigRef.current(snapshot)
+                } catch (error) {
+                    console.error('Failed to flush settings on unmount:', error)
+                }
+            })
+        }
+    }, [])
+
     const handleGeneralChange = (field, value) => {
         setGeneralConfig(prev => ({ ...prev, [field]: value }))
     }
