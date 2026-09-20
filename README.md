@@ -1,4 +1,4 @@
-# Bili QQ Bot
+# SubX Bot
 
 ![License](https://img.shields.io/badge/license-ISC-blue.svg) ![Docker](https://img.shields.io/badge/docker-ready-blue) ![Node](https://img.shields.io/badge/node-%3E%3D22.12.0-green) ![Python](https://img.shields.io/badge/python-%3E%3D3.10-yellow)
 
@@ -113,12 +113,30 @@
 
 *[视频教程](https://www.bilibili.com/video/BV1YsrEBVEs6/ "bilibili")*
 
+### Windows（PowerShell）
+
+需要 Docker Desktop（脚本检测到缺失时会引导安装）。
+
+```powershell
+# 从 GitHub 下载
+iwr https://raw.githubusercontent.com/UnsplashZ/SubX-bot/refs/heads/main/setup.ps1 -OutFile setup.ps1; .\setup.ps1
+```
+
+```powershell
+# 网络受限时从代理下载
+iwr https://gh-proxy.org/https://raw.githubusercontent.com/UnsplashZ/SubX-bot/refs/heads/main/setup.ps1 -OutFile setup.ps1; .\setup.ps1
+```
+
+### macOS / Linux
+
 ```bash
 # 从 GitHub 下载
-wget -O setup.sh https://raw.githubusercontent.com/UnsplashZ/SubX-bot/refs/heads/main/setup.sh && chmod +x setup.sh && sudo ./setup.sh
+curl -fsSL https://raw.githubusercontent.com/UnsplashZ/SubX-bot/refs/heads/main/setup.sh -o setup.sh && chmod +x setup.sh && sudo ./setup.sh
+```
 
+```bash
 # 网络受限时从代理下载
-wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/UnsplashZ/SubX-bot/refs/heads/main/setup.sh && chmod +x setup.sh && sudo ./setup.sh
+curl -fsSL https://gh-proxy.org/https://raw.githubusercontent.com/UnsplashZ/SubX-bot/refs/heads/main/setup.sh -o setup.sh && chmod +x setup.sh && sudo ./setup.sh
 ```
 
 首次运行按提示选择 QQ 接入方式并填写账号信息，脚本会自动生成 Compose 与 `config/config.yaml`；之后对同一安装目录再次运行同一条命令即可更新，现有配置与业务数据都会保留。
