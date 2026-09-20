@@ -41,100 +41,6 @@ const DEFAULT_LABEL_CONFIG = {
     variety: true
 }
 
-const DEFAULT_AGENT_CONFIG = {
-    enabled: false,
-    observeOnly: true,
-    logTrajectory: true,
-    defaultGroupEnabled: false,
-    decisionMode: 'rule_only',
-    sendEnabled: false,
-    aliases: [],
-    persona: {
-        displayName: '群聊 Bot',
-        style: '像有分寸的群友一样自然接话；短、口语化、有观点但不抢话。',
-        boundaries: 'Bilibili 是主要能力之一，但不是唯一职责；可以参与群聊、技术讨论、Bot 功能讨论和轻松闲聊，违法危险内容保持拒绝。'
-    },
-    shortTerm: {
-        maxRecentMessagesPerGroup: 100,
-        topicIdleMs: 30 * 60 * 1000,
-        crowdedMessagesPerMinute: 8,
-        promptRecentMessages: 16,
-        promptTopicMessages: 20,
-        promptAssistantMessages: 6,
-        promptMaxMessages: 32,
-        promptMaxCharsPerMessage: 220,
-        promptMaxContextChars: 6000
-    },
-    longTerm: {
-        retrieveLimit: 5,
-        topicSummaryEnabled: true,
-        topicSummaryMinMessages: 6,
-        topicSummaryMinIntervalMs: 10 * 60 * 1000
-    },
-    replyPolicy: {
-        minReplyScore: 0.65,
-        cooldownMs: 5 * 1000
-    },
-    participation: {
-        enabled: true,
-        timingGateEnabled: true,
-        replyerEnabled: true,
-        expressionLearningEnabled: false,
-        replyEffectTrackingEnabled: false,
-        personProfileEnabled: true
-    },
-    replyer: {
-        maxReactChars: 60,
-        maxReplyChars: 500,
-        allowQuoteReply: true
-    },
-    expression: {
-        learningMinMessages: 20,
-        learningMinIntervalMs: 10 * 60 * 1000
-    },
-    timing: {
-        quietWindowMs: 2500,
-        maxWaitMs: 12000
-    },
-    social: {
-        enabled: false,
-        mode: 'quiet',
-        interjectProbability: 0.18,
-        ambientReactProbability: 0.08,
-        planningMinScore: 0.3,
-        topicAffinityMinScore: 0.8,
-        minInterjectScore: 0.72,
-        minAmbientScore: 0.62,
-        cooldownMs: 90 * 1000,
-        dailyInterjectLimit: 30,
-        perTopicInterjectLimit: 2,
-        avoidDuringRapidTwoPersonChat: true,
-        maxCasualReplyChars: 120
-    },
-    tools: {
-        enabled: false,
-        confirmationTtlMs: 60 * 1000,
-        requireConfirmationFor: ['medium', 'high']
-    },
-    llm: {
-        enabled: false,
-        provider: 'openai-compatible',
-        baseURL: '',
-        model: '',
-        apiKeyEnv: 'AGENT_API_KEY',
-        timeoutMs: 12 * 1000,
-        temperature: 0.2,
-        maxTokens: 500
-    },
-    budget: {
-        enabled: true,
-        windowMs: 60 * 1000,
-        maxLlmCallsPerGroupPerMinute: 60,
-        maxLlmCallsPerUserPerMinute: 20
-    },
-    groups: {}
-}
-
 function parseCsvList(value) {
     if (Array.isArray(value)) {
         return value.map((item) => String(item).trim()).filter(Boolean)
@@ -321,8 +227,7 @@ const META = {
             return overrides.labelConfig
         }
     },
-    groupConfigs: { env: null, def: {}, type: 'object', lazyInit: true },
-    agent: { env: null, def: DEFAULT_AGENT_CONFIG, type: 'object', lazyInit: true }
+    groupConfigs: { env: null, def: {}, type: 'object', lazyInit: true }
 }
 
 module.exports = {
@@ -331,6 +236,5 @@ module.exports = {
     parseValue,
     SUBSCRIPTION_AT_ALL_SOURCE_KEYS,
     SUBSCRIPTION_AT_ALL_CATEGORY_KEYS,
-    DEFAULT_LABEL_CONFIG,
-    DEFAULT_AGENT_CONFIG
+    DEFAULT_LABEL_CONFIG
 }

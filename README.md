@@ -1,10 +1,8 @@
 # Bili QQ Bot
 
-![License](https://img.shields.io/badge/license-ISC-blue.svg) ![Docker](https://img.shields.io/badge/docker-ready-blue) ![Node](https://img.shields.io/badge/node-%3E%3D22.12.0-green) ![Python](https://img.shields.io/badge/python-%3E%3D3.8-yellow)
+![License](https://img.shields.io/badge/license-ISC-blue.svg) ![Docker](https://img.shields.io/badge/docker-ready-blue) ![Node](https://img.shields.io/badge/node-%3E%3D22.12.0-green) ![Python](https://img.shields.io/badge/python-%3E%3D3.10-yellow)
 
 基于 [NapCat](https://github.com/NapNeko/NapCatQQ) / OneBot 的 Bilibili 链接解析机器人，并提供 QQ 官方机器人 OpenAPI Provider（可选）。它能智能识别并解析 B 站各种类型的链接，并为这些内容生成高清预览卡片。
-
-> 旧版 AI 对话、向量记忆、用户画像、MCP 工具调用等实验性能力已移除。命令和 B 站链接均走确定性系统链路，机器人不会调用 LLM 处理消息。
 
 ## 目录
 
@@ -12,8 +10,6 @@
 - [📸 预览效果](#预览效果)
 - [🚀 一键快速部署](#一键快速部署)
 - [🖥️ WebUI 管理面板](#webui-管理面板)
-- [⚙️ 配置说明](#配置说明)
-- [🧪 开发与测试](#开发与测试)
 - [📂 项目结构](#项目结构)
 - [💬 指令列表](#指令列表)
 
@@ -119,43 +115,28 @@
 
 ## 一键快速部署
 
-运行下方命令。`setup.sh` 首次安装时选择 QQ 接入实现并生成 `config/config.yaml`；再次对同一安装目录运行时，仅拉取并重建容器，保留现有 Compose、`.env`、配置和业务数据。
-*[点我跳转到视频教程](https://www.bilibili.com/video/BV1YsrEBVEs6/ "bilibili")*
+*[视频教程](https://www.bilibili.com/video/BV1YsrEBVEs6/ "bilibili")*
 
 ```bash
-#从Github下载
+# 从 GitHub 下载
 wget -O setup.sh https://raw.githubusercontent.com/UnsplashZ/bili-qq-bot/refs/heads/main/setup.sh && chmod +x setup.sh && sudo ./setup.sh
 
-#从代理下载
+# 网络受限时从代理下载
 wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/UnsplashZ/bili-qq-bot/refs/heads/main/setup.sh && chmod +x setup.sh && sudo ./setup.sh
 ```
 
-`setup.sh` 不使用 `install`、`upgrade` 或 `apply` 参数，而是根据安装目录自动选择路径：
+首次运行按提示选择 QQ 接入方式并填写账号信息，脚本会自动生成 Compose 与 `config/config.yaml`；之后对同一安装目录再次运行同一条命令即可更新，现有配置与业务数据都会保留。
 
-- **首次安装**：先选择 LLBot（默认）、NapCat、已有 OneBot v11 服务或 QQ 官方入口，再填写镜像、端口、账号、管理员和 WebSocket Token；生成对应 Compose、接入配置与唯一的 `config/config.yaml`。
-- **已有安装更新**：当目录中存在标准 Compose 文件（`compose.yaml`、`compose.yml`、`docker-compose.yaml` 或 `docker-compose.yml`）以及 `config.yaml` 或 legacy 配置时，脚本不会重新询问或改写文件，只执行 Compose 校验、镜像拉取、容器重建和 Bot 健康检查。
-
-脚本独立启动 Bot 管理面板，不以 LLBot/NapCat 登录或鉴权成功作为前置条件。`/api/live` 检查必须通过；QQ 未连接时 `/api/ready` 返回 503，脚本提示接入未就绪，但仍完成面板部署。可立即登录 WebUI 修改连接配置或切换官方入口；Bot 在后台重试，不因 QQ 离线而退出重启。接入就绪观察默认 15 秒，可通过 `BILI_SETUP_READY_TIMEOUT` 调整。旧配置、schema 和业务数据 migration 仍由应用启动时完成。
-
-| 接入选项 | 部署与登录 |
+| 接入方式 | 说明 |
 | --- | --- |
-| LLBot（默认） | 默认 `linyuchen/llbot:latest`，直连模式；在 LLBot 面板录入有效 Auth Token 并扫码。会话持久化在 `llbot/data`，`BILI_BOT_QQ` 用于重启自动恢复。 |
+| LLBot（默认） | 默认 `linyuchen/llbot:latest`，扫码登录。面板绑定 `127.0.0.1:3080`，远程安装后执行 `ssh -L 3080:127.0.0.1:3080 <服务器>`，再打开本机 `http://127.0.0.1:3080`；初始面板密码在 `llbot/data/webui_token.txt`，Auth Token 获取见 [LLBot 文档](https://luckylillia.com)。 |
 | NapCat | 保留 NapCat 容器、账号配置与扫码方式。 |
-| QQ 官方入口 | 只部署 Bot，直接生成 official 配置；AppID / ClientSecret 可在安装时输入，也可稍后通过面板补充。 |
-| 已有 OneBot v11 | 只部署 Bot，填写从 Bot 容器可访问的 WebSocket 地址和实际 Token。SnowLuma 1.14.17 已实测登录、只读接口、群文字/图片/视频发送与回读；本次容器重启后 OneBot 未恢复，自动登录恢复未通过。 |
+| QQ 官方入口 | 只部署 Bot；AppID / ClientSecret 可在安装时输入，也可稍后到 WebUI 补充。 |
+| 已有 OneBot v11 | 只部署 Bot；填写从 Bot 容器可访问的 WebSocket 地址和实际 Token。 |
 
-LLBot 面板默认仅绑定服务器 `127.0.0.1:3080`。远程安装后执行 `ssh -L 3080:127.0.0.1:3080 <服务器>`，再打开本机 `http://127.0.0.1:3080`。初始面板密码由脚本生成，保存在安装目录 `llbot/data/webui_token.txt`。LLBot 的 Auth Token 获取方式见[官方文档](https://luckylillia.com)。
-
-LLBot 与已有 OneBot 模式使用 `onebot/media` 共享图片和视频文件，容器内路径为 `/app/.config/QQ/tmp`。连接已有服务时，需将同一目录挂载到该服务的相同路径；跨主机部署需要共享文件系统，单纯连通 WebSocket 不足以保证媒体发送。
-
-目前应用的 OneBot 客户端配置键仍为 `qq.provider: napcat` 和 `qq.napcat.*`，LLBot 复用此客户端，部署实现由 Compose 中的服务决定。LLBot 8.2.1 已实测通过登录、基础只读接口和群聊文字/图片/视频发送及消息回读。兼容层按连接探测实现，自动适配公告删除接口名与群邀请字段；LLBot 不支持单独查询已过滤申请，调用时明确报不支持。SnowLuma 的混合群请求数组保留为 `unclassifiedRequests`，不猜测邀请/申请类型。公告删除等管理写操作未在真实群执行，其中公告删除适配通过模拟接口验证。详见 [实测记录](docs/plans/2026-09-19-onebot-provider-validation.md)。
-
-```bash
-# 首次安装和后续更新使用同一条命令，并选择同一个安装目录
-sudo ./setup.sh
-```
-
-> 更新路径不会自动覆盖现有 Compose。如果新版本明确要求新增 volume、端口或环境变量，需要先人工同步 Compose，再运行 setup。项目采用单实例部署边界：同一套 `config/`、`data/` 只运行一个 Bot 容器；程序不创建配置 owner lock，也不协调多个容器共享写入。
+- 脚本不要求 QQ 登录成功：管理面板一定可用；QQ 未就绪时稍后到 WebUI 修改连接配置即可，Bot 会自动重连。
+- LLBot 与已有 OneBot 模式通过 `onebot/media` 目录共享媒体文件；连接已有服务时，需把同一目录挂载到该服务的 `/app/.config/QQ/tmp`（跨主机部署需要共享文件系统）。
+- 更新不会覆盖现有 Compose；同一套 `config/`、`data/` 只运行一个 Bot 容器。
 
 
 ## WebUI 管理面板
@@ -186,58 +167,6 @@ sudo ./setup.sh
 > 说明：WebUI 仅管理真实群聊标识：NapCat 使用数字群号，QQ Official 使用安全的 `group_openid`；不支持私聊会话（`private_*`）管理。
 
 </details>
-
-## 配置说明
-
-唯一配置真源是 `config/config.yaml`。主程序每次启动先运行 `ApplicationMigrationBootstrap`：已有合法 YAML 永远权威；没有 YAML 时才读取 `.env`、`config.json`、`.jwtSecret` 与 `.qqOfficialClientSecret`；随后执行 schema registry 和业务数据 registry，再初始化 ConfigService。失败时 Dashboard、Provider、Python、browser 和订阅 timer 都不会启动。
-
-直接运行 `node src/bot.js` 或使用手写 Compose 也走同一 bootstrap。离线诊断/显式迁移可使用 Config CLI 与 data migration CLI；它们调用相同 service，不维护额外的配置锁。
-
-使用 Docker 时，只要继续挂载原来的 `/app/config` 和 `/app/data`，执行 `docker compose pull && docker compose up -d` 即可在新容器启动阶段自动迁移 legacy 配置与业务数据，不需要设置额外的 fencing 环境变量，也不会因旧版本遗留的 `config-owner.lock` 目录阻止启动。项目支持的部署模型是一套挂载目录只运行一个 Bot 容器；并发共享写入不受支持，也不会由程序主动检测或互斥。
-
-```bash
-node src/cli/config.js init --output config/config.yaml
-node src/cli/config.js validate --config config/config.yaml
-node src/cli/config.js status --manifest data/migrations/config-manifest.json
-node src/cli/config.js deployment-plan --config config/config.yaml --output data/config-state/deployment-plan.json
-```
-
-YAML 使用 versioned schema（当前 `version: 1`），主要分区包括 `qq`、`dashboard`、`deployment`、`paths`、`pythonService`、`cache`、`subscription`、`rendering`、`videoDownload`、`logging` 和 `groupConfigs`。Secret（NapCat token、Official client secret、Dashboard password/JWT）均写入 YAML，文件/目录权限为 `0600/0700`；Dashboard 和 API 只返回 configured marker。旧版本文档中的 `agent` 分区已被移除：现有 `config.yaml` 里遗留的 `agent` 段仍合法但完全被忽略，可在方便时手动删除。
-
-手工编辑合法 YAML 后，ConfigService 会按 diff 自动即时应用或重建对应子系统：日志/缓存/订阅 timer、Python、Dashboard listener、浏览器、下载路径以及 NapCat/Official Provider 都无需手工重启整个 Bot。非法 YAML、重复 key、危险对象路径或未知字段会被拒绝，运行实例继续使用 last-good snapshot。宿主机端口、volume 和 Docker 网络属于 Compose 配置，需要手工调整安装目录中的 `.env` 或 `docker-compose.yml` 后重建容器。
-
-Dashboard/API 更新必须携带 `expectedGeneration`。响应会区分 `applied`、`reloaded`、`deploymentApplyRequired` 和 `warnings`；Secret 留空表示保持不变，清除必须使用显式 secret action。
-
-### QQ Official
-
-- 配置位于 `qq.provider: official` 与 `qq.official.*`；`group_openid`、`user_openid`、`member_openid` 使用安全 opaque ID，不与数字 QQ 号混用。
-- Provider 配置和 `paths.napcatTemp` 热更新会受控重建连接；candidate 在 commit 前不接收业务入口，失败时恢复旧 generation。
-- Official ID store、reply/recall mapping 与 per-target `msg_seq` 使用共享 COW 状态，失败 candidate 不写正式文件。
-- 富媒体公网临时地址配置为 `qq.official.tempPublicBaseUrl`，内置只读路径仍为 `/qq-official-temp/`。
-
-## 开发与测试
-
-本地开发建议使用仓库内的固定入口，避免新增一次性调试脚本：
-
-建议使用 Node.js `>=22.12.0`（Docker 与 CI 均使用 Node 22）。
-
-```bash
-# Node/MJS 单元测试
-npm test
-
-# Python Bilibili 服务相关单测
-venv/bin/python -m pytest test/unit/bilibili
-
-# Dashboard 检查
-cd dashboard && npm run lint
-```
-
-预览卡片和渲染回归使用 `test/tools/` 下的复用工具，生成的图片、HTML、JSON 等本地验证产物统一写入 `test/output/`：
-
-```bash
-node test/tools/preview-lab.js "https://www.bilibili.com/opus/1183668934980665366" --fresh --out-name local-check
-node test/tools/preview-lab-web.js
-```
 
 ## 项目结构
 

@@ -6,8 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Bili QQ Bot is a Node.js + Python hybrid application that connects QQ groups to Bilibili content via NapCat (OneBot v11 protocol). It parses Bilibili URLs, generates preview cards using Puppeteer, and supports subscription monitoring.
 
-The legacy AI/MCP stack and the experimental Agent architecture have both been removed. Do not reintroduce AI chat, vector memory, user profile, MCP tool wiring, or any LLM-driven message handling: commands and Bilibili links run exclusively through the deterministic system pipeline (`/src/commands/`, `/src/services/link/`). The `agent` key in `config/config.yaml` is a legacy tombstone — existing documents keep validating, but the value is ignored and never projected publicly.
-
 **Tech Stack:** Node.js 22.12+, Python 3.10+, Express 5, WebSocket, Puppeteer, bilibili-api-python 17.4.2
 
 ## Project Structure
@@ -692,17 +690,7 @@ For local development, inspect `logs/application.log` before assuming the Node s
 
 ### Preview and Rendering Debugging
 
-For preview card issues, prefer the existing tools over ad-hoc debug scripts:
-
-```bash
-# CLI preview regression
-node test/tools/preview-lab.js "https://www.bilibili.com/opus/1183668934980665366" --fresh --out-name local-check
-
-# Browser-based preview inspection
-node test/tools/preview-lab-web.js
-```
-
-Write generated outputs to `test/output/` and compare there.
+Use the preview regression tools from `Testing & Verification` (`test/tools/preview-lab.js` / `preview-lab-web.js`) instead of ad-hoc debug scripts; write generated outputs to `test/output/` and compare there.
 
 ### Subscription State Debugging
 
@@ -807,7 +795,6 @@ Group admins who are not root cannot use private-chat entry.
 - Keep `package.json` dependencies limited to runtime imports used by the bot, dashboard backend, rendering, logging, and WebSocket layers.
 - Keep `dashboard/package.json` dependencies limited to React UI/runtime packages and Vite/ESLint/Tailwind build tooling.
 - `requirements.txt` currently pins bilibili-api-python 17.4.2 and the transitive packages needed by `aiohttp` / `bilibili-api-python`; Python 3.10+ is required. Do not remove transitive pins without rebuilding the Docker image and running Python endpoint checks.
-- Removed legacy AI/MCP packages, SDKs, and the experimental Agent subsystem must not be added back; message handling is deterministic end to end.
 
 ## Common Pitfalls
 
