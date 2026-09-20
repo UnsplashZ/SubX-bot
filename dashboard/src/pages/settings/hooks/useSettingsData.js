@@ -27,14 +27,12 @@ export default function useSettingsData(show) {
     const [loading, setLoading] = useState(true)
 
     const [generalConfig, setGeneralConfig] = useState(GENERAL_CONFIG_DEFAULTS)
-    const [savingGeneral, setSavingGeneral] = useState(false)
 
     const [blacklist, setBlacklist] = useState([])
     const [newBlacklistQQ, setNewBlacklistQQ] = useState('')
     const [addingBlacklist, setAddingBlacklist] = useState(false)
 
     const [videoDownloadConfig, setVideoDownloadConfig] = useState(DEFAULT_VIDEO_DOWNLOAD_CONFIG)
-    const [savingVideoDownload, setSavingVideoDownload] = useState(false)
     const [qqProviderConfig, setQqProviderConfig] = useState(DEFAULT_QQ_PROVIDER_CONFIG)
     const [qqProviderStatus, setQqProviderStatus] = useState(null)
     const [configStatus, setConfigStatus] = useState(null)
@@ -45,6 +43,12 @@ export default function useSettingsData(show) {
     const [recoveryResult, setRecoveryResult] = useState(null)
     const recoveryCoordinatorRef = useRef(null)
 
+    const [autoSaveState, setAutoSaveState] = useState({ status: 'idle', savedAt: null })
+    const lastSyncedRef = useRef(null)
+    const latestMergedRef = useRef(null)
+    const applyConfigRef = useRef(null)
+    const saveChainRef = useRef(Promise.resolve())
+
     const [biliGlobalStatus, setBiliGlobalStatus] = useState(createDefaultBiliStatus())
 
     const hydrateConfigSnapshot = useCallback((snapshot, status = null) => {
@@ -52,6 +56,12 @@ export default function useSettingsData(show) {
         setGeneralConfig(hydrated.generalConfig)
         setVideoDownloadConfig(hydrated.videoDownloadConfig)
         setQqProviderConfig(hydrated.qqProviderConfig)
+        lastSyncedRef.current = JSON.stringify({
+            ...hydrated.generalConfig,
+            ...hydrated.videoDownloadConfig,
+            ...hydrated.qqProviderConfig
+        })
+        latestMergedRef.current = null
         setConfigStatus(prev => {
             if (status) return hydrated.configStatus
             try {
@@ -122,6 +132,46 @@ export default function useSettingsData(show) {
         }
     }, [hydrateConfigSnapshot, show])
 
+    const recoveryRequired = configStatus?.recoveryRequired?.required === true
+
+    useEffect(() => {
+        if (loading || recoveryRequired || recoveringConfig || reloadingConfig) return
+        const merged = {
+            ...generalConfig,
+            ...videoDownloadConfig,
+            ...qqProviderConfig
+        }
+        if (JSON.stringify(merged) === lastSyncedRef.current) return
+        latestMergedRef.current = merged
+        setAutoSaveState(prev => ({ ...prev, status: 'pending' }))
+        const timer = setTimeout(() => {
+            saveChainRef.current = saveChainRef.current.then(async () => {
+                const snapshot = latestMergedRef.current
+                if (!snapshot || JSON.stringify(snapshot) === lastSyncedRef.current) return
+                if (!mountedRef.current) return
+                setAutoSaveState(prev => ({ ...prev, status: 'saving' }))
+                try {
+                    const response = await applyConfigRef.current(snapshot)
+                    if (!response.data.config) {
+                        lastSyncedRef.current = JSON.stringify(snapshot)
+                    }
+                    if (latestMergedRef.current === snapshot && mountedRef.current) {
+                        setAutoSaveState({ status: 'saved', savedAt: new Date() })
+                    }
+                } catch (error) {
+                    if (!mountedRef.current) return
+                    console.error('Failed to auto-save settings:', error)
+                    const errorMsg = error.response?.data?.error || '自动保存失败，将在下次修改时重试'
+                    show(errorMsg, 'error')
+                    if (latestMergedRef.current === snapshot) {
+                        setAutoSaveState(prev => ({ ...prev, status: 'error' }))
+                    }
+                }
+            })
+        }, 800)
+        return () => clearTimeout(timer)
+    }, [generalConfig, videoDownloadConfig, qqProviderConfig, loading, recoveryRequired, recoveringConfig, reloadingConfig, show])
+
     const handleGeneralChange = (field, value) => {
         setGeneralConfig(prev => ({ ...prev, [field]: value }))
     }
@@ -178,20 +228,7 @@ export default function useSettingsData(show) {
         if (response.data.config) hydrateConfigSnapshot(response.data.config)
         return response
     }
-
-    const saveGeneralSettings = async () => {
-        setSavingGeneral(true)
-        try {
-            await applyConfig(generalConfig)
-            show('常规设置已保存！', 'success')
-        } catch (error) {
-            console.error('Failed to save general settings:', error)
-            const errorMsg = error.response?.data?.error || '保存常规设置失败'
-            show(errorMsg, 'error')
-        } finally {
-            setSavingGeneral(false)
-        }
-    }
+    applyConfigRef.current = applyConfig
 
     const handleAddBlacklist = async () => {
         if (!newBlacklistQQ) return
@@ -224,40 +261,6 @@ export default function useSettingsData(show) {
         } catch (error) {
             console.error('Failed to remove from blacklist:', error)
             show('移除黑名单失败', 'error')
-        }
-    }
-
-    const saveVideoDownloadSettings = async () => {
-        setSavingVideoDownload(true)
-        try {
-            await applyConfig(videoDownloadConfig)
-            show('视频下载设置已保存！', 'success')
-        } catch (error) {
-            console.error('Failed to save video download settings:', error)
-            const errorMsg = error.response?.data?.error || '保存视频下载设置失败'
-            show(errorMsg, 'error')
-        } finally {
-            setSavingVideoDownload(false)
-        }
-    }
-
-    const saveAllSettings = async () => {
-        setSavingGeneral(true)
-        setSavingVideoDownload(true)
-        try {
-            await applyConfig({
-                ...generalConfig,
-                ...videoDownloadConfig,
-                ...qqProviderConfig
-            })
-            show('设置已保存并完成配置应用。', 'success')
-        } catch (error) {
-            console.error('Failed to save settings:', error)
-            const errorMsg = error.response?.data?.error || '保存设置失败'
-            show(errorMsg, 'error')
-        } finally {
-            setSavingGeneral(false)
-            setSavingVideoDownload(false)
         }
     }
 
@@ -339,9 +342,7 @@ export default function useSettingsData(show) {
     return {
         loading,
         generalConfig,
-        savingGeneral,
         handleGeneralChange,
-        saveGeneralSettings,
         blacklist,
         newBlacklistQQ,
         setNewBlacklistQQ,
@@ -350,13 +351,11 @@ export default function useSettingsData(show) {
         handleRemoveBlacklist,
         videoDownloadConfig,
         setVideoDownloadConfig,
-        savingVideoDownload,
-        saveVideoDownloadSettings,
         qqProviderConfig,
         setQqProviderConfig,
         qqProviderStatus,
         clearOfficialSecret,
-        saveAllSettings,
+        autoSaveState,
         configStatus,
         migrationStatus,
         lastApplyResult,

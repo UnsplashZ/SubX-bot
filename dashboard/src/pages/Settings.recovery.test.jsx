@@ -20,9 +20,7 @@ function recoverySettingsData() {
   return {
     loading: false,
     generalConfig: { subscriptionCheckInterval: 300, linkCacheTimeout: 600, showId: true },
-    savingGeneral: false,
     handleGeneralChange: vi.fn(),
-    saveGeneralSettings: vi.fn(),
     blacklist: [],
     newBlacklistQQ: '',
     setNewBlacklistQQ: vi.fn(),
@@ -37,13 +35,11 @@ function recoverySettingsData() {
       videoDownloadCleanTimeout: 6
     },
     setVideoDownloadConfig: vi.fn(),
-    savingVideoDownload: false,
-    saveVideoDownloadSettings: vi.fn(),
     qqProviderConfig: { qqProvider: 'napcat', qqOfficialRootOpenids: [] },
     setQqProviderConfig: vi.fn(),
     qqProviderStatus: null,
     clearOfficialSecret: vi.fn(),
-    saveAllSettings: vi.fn(),
+    autoSaveState: { status: 'idle', savedAt: null },
     configStatus: {
       valid: true,
       documentGeneration: 8,
@@ -65,10 +61,9 @@ function recoverySettingsData() {
 describe('Settings recovery lockout', () => {
   beforeEach(() => useSettingsData.mockReturnValue(recoverySettingsData()))
 
-  it('disables save, reload, and ordinary configuration controls', () => {
+  it('disables reload and ordinary configuration controls while recovery is required', () => {
     render(<Settings />)
 
-    expect(screen.getByRole('button', { name: /保存设置/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /从磁盘重载/ })).toBeDisabled()
     expect(screen.getByRole('switch', { name: '显示 UID' })).toBeDisabled()
     expect(screen.getByPlaceholderText('输入 QQ 号')).toBeDisabled()

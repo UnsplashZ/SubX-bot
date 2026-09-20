@@ -12,8 +12,34 @@ import RestartConfirmModal from './settings/components/RestartConfirmModal'
 import BiliQrModal from './settings/components/BiliQrModal'
 import useSettingsData from './settings/hooks/useSettingsData'
 import useBiliLogin from './settings/hooks/useBiliLogin'
-import { Save } from 'lucide-react'
-import { Button } from '../components/ui'
+import { Check, CloudUpload, Loader2, X } from 'lucide-react'
+
+const formatSavedAt = (date) =>
+  date
+    ? date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : ''
+
+const AUTO_SAVE_INDICATORS = {
+  pending: { icon: CloudUpload, className: 'text-[var(--muted)]', text: '待保存' },
+  saving: { icon: Loader2, className: 'text-[var(--accent)]', text: '自动保存中...', spin: true },
+  saved: { icon: Check, className: 'text-emerald-500', text: '' },
+  error: { icon: X, className: 'text-red-500', text: '自动保存失败，将在下次修改时重试' }
+}
+
+const AutoSaveIndicator = ({ state }) => {
+  if (!state || state.status === 'idle') return null
+  const indicator = AUTO_SAVE_INDICATORS[state.status] || AUTO_SAVE_INDICATORS.pending
+  const Icon = indicator.icon
+  const text = state.status === 'saved'
+    ? `已自动保存 ${formatSavedAt(state.savedAt)}`
+    : indicator.text
+  return (
+    <div className={`flex items-center gap-1.5 text-xs ${indicator.className}`} role="status">
+      <Icon size={14} className={indicator.spin ? 'animate-spin' : ''} />
+      <span>{text}</span>
+    </div>
+  )
+}
 
 const Settings = () => {
   const { show } = useToast()
@@ -44,7 +70,6 @@ const Settings = () => {
     return <div className="p-8 text-center text-[var(--muted)]">正在加载设置...</div>
   }
 
-  const savingSettings = settingsData.savingGeneral || settingsData.savingVideoDownload
   const recoveryRequired = settingsData.configStatus?.recoveryRequired?.required === true
 
   return (
@@ -53,17 +78,9 @@ const Settings = () => {
         <div>
           <div className="font-mono text-xs font-semibold uppercase text-[var(--accent)]">Configure</div>
           <h1 className="mt-1 text-3xl font-semibold text-[var(--fg)]">系统设置</h1>
-          <p className="mt-1.5 text-xs text-[var(--muted)]">配置运行环境、连接方式和全局行为。</p>
+          <p className="mt-1.5 text-xs text-[var(--muted)]">配置运行环境、连接方式和全局行为，修改后自动保存。</p>
         </div>
-        <Button
-          type="button"
-          onClick={settingsData.saveAllSettings}
-          disabled={savingSettings || recoveryRequired || settingsData.recoveringConfig}
-          variant="primary"
-          icon={Save}
-        >
-          {savingSettings ? '保存中...' : '保存设置'}
-        </Button>
+        <AutoSaveIndicator state={settingsData.autoSaveState} />
       </header>
 
       <GeneralSettingsSection
