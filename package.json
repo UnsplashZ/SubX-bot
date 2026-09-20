@@ -1,5 +1,5 @@
 {
-  "name": "bili-qq-bot",
+  "name": "subx-bot",
   "version": "1.0.0",
   "description": "QQ Bot based on NapCat with Bilibili integration",
   "main": "src/bot.js",

@@ -191,7 +191,7 @@ jobs:
 
           \`\`\`bash
           git clone ${{ github.server_url }}/${{ github.repository }}.git
-          cd bili-qq-bot
+          cd SubX-bot
           docker compose up -d
           \`\`\`
           EOF

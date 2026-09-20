@@ -69,7 +69,7 @@ describe('dashboard logs export helpers', function () {
         const date = new Date(2026, 5, 1, 2, 3, 4)
         assert.equal(
             formatLogExportFilename(date),
-            'bili-qq-bot-logs-20260601-020304.jsonl'
+            'subx-bot-logs-20260601-020304.jsonl'
         )
     })
 })

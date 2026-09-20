@@ -11,7 +11,7 @@ Bili QQ Bot is a Node.js + Python hybrid application that connects QQ groups to 
 ## Project Structure
 
 ```
-bili-qq-bot/
+SubX-bot/
 ├── src/                    # Main application source
 │   ├── bot.js              # Entry point, WebSocket connection
 │   ├── config.js           # Compatibility entry re-exporting src/config/

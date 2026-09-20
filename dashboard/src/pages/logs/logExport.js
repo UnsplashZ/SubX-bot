@@ -43,7 +43,7 @@ function padDatePart(value) {
 
 export function formatLogExportFilename(date = new Date()) {
   return [
-    'bili-qq-bot-logs-',
+    'subx-bot-logs-',
     date.getFullYear(),
     padDatePart(date.getMonth() + 1),
     padDatePart(date.getDate()),

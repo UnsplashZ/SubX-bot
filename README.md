@@ -119,10 +119,10 @@
 
 ```bash
 # 从 GitHub 下载
-wget -O setup.sh https://raw.githubusercontent.com/UnsplashZ/bili-qq-bot/refs/heads/main/setup.sh && chmod +x setup.sh && sudo ./setup.sh
+wget -O setup.sh https://raw.githubusercontent.com/UnsplashZ/SubX-bot/refs/heads/main/setup.sh && chmod +x setup.sh && sudo ./setup.sh
 
 # 网络受限时从代理下载
-wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/UnsplashZ/bili-qq-bot/refs/heads/main/setup.sh && chmod +x setup.sh && sudo ./setup.sh
+wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/UnsplashZ/SubX-bot/refs/heads/main/setup.sh && chmod +x setup.sh && sudo ./setup.sh
 ```
 
 首次运行按提示选择 QQ 接入方式并填写账号信息，脚本会自动生成 Compose 与 `config/config.yaml`；之后对同一安装目录再次运行同一条命令即可更新，现有配置与业务数据都会保留。
@@ -171,7 +171,7 @@ wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/Unsplash
 ## 项目结构
 
 ```text
-bili-qq-bot/
+SubX-bot/
 ├── src/                    # Node.js bot、命令、服务、渲染和 Dashboard 后端
 ├── dashboard/              # React/Vite WebUI
 ├── test/

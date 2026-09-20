@@ -25,7 +25,7 @@ const BrandIcon = ({ className = '' }) => (
   >
     <img
       src={botIcon}
-      alt="bili-qq-bot"
+      alt="SubX-bot"
       className="h-full w-full object-contain p-1"
       onError={(event) => {
         event.currentTarget.style.display = 'none';
@@ -80,7 +80,7 @@ const Layout = ({ children }) => {
         </button>
         <BrandIcon className="ml-2.5 h-8 w-8 sm:ml-3 sm:h-9 sm:w-9" />
         <h1 className="ml-2.5 text-base font-semibold text-[var(--fg)] sm:ml-3 sm:text-lg">
-          bili-qq-bot
+          SubX-bot
         </h1>
       </header>
 
@@ -89,7 +89,7 @@ const Layout = ({ children }) => {
           <div className="flex items-center gap-3">
             <BrandIcon className="h-8 w-8" />
             <div>
-              <h1 className="text-sm font-semibold text-[var(--fg)]">bili-qq-bot</h1>
+              <h1 className="text-sm font-semibold text-[var(--fg)]">SubX-bot</h1>
               <p className="mt-0.5 text-[10px] text-[var(--muted)]">管理控制台</p>
             </div>
           </div>

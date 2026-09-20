@@ -91,8 +91,8 @@ class OfficialGatewayClient extends EventEmitter {
                 shard: this.shard,
                 properties: {
                     os: process.platform,
-                    browser: 'bili-qq-bot',
-                    device: 'bili-qq-bot'
+                    browser: 'SubX-bot',
+                    device: 'SubX-bot'
                 }
             }
         })

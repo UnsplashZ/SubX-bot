@@ -22,7 +22,7 @@ const BrandIcon = () => (
   <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] shadow-sm">
     <img
       src={botIcon}
-      alt="bili-qq-bot"
+      alt="SubX-bot"
       className="h-full w-full object-contain p-1"
       onError={(event) => {
         event.currentTarget.style.display = 'none';
@@ -81,7 +81,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
             <BrandIcon />
             <div className="min-w-0">
               <h1 className="truncate text-lg font-semibold text-[var(--fg)]">
-                bili-qq-bot
+                SubX-bot
               </h1>
               <p className="mt-0.5 text-[10px] text-[var(--muted)]">管理控制台</p>
             </div>
