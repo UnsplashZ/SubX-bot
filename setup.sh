@@ -17,6 +17,7 @@ LLBOT_IMAGE_DEFAULT='linyuchen/llbot:latest'
 QQ_IMPLEMENTATION='llbot'
 QQ_SERVICE='llbot'
 LLBOT_WEBUI_PASSWORD=''
+NAPCAT_WEBUI_TOKEN=''
 LLBOT_AUTH_TOKEN=''
 LLBOT_AUTH_TOKEN_URL='https://auth.luckylillia.com/tokens'
 LLBOT_QR_HELPER_URLS=(
@@ -263,6 +264,7 @@ services:
       TZ: Asia/Shanghai
       WS_ENABLE: "true"
       HTTP_ENABLE: "true"
+      WEBUI_TOKEN: ${BILI_NAPCAT_WEBUI_TOKEN:-}
     volumes:
       - type: bind
         source: ./napcat/config
@@ -488,6 +490,39 @@ verify_management_and_report_qq() {
     fi
 }
 
+resolve_napcat_webui_token() {
+    # NapCat 面板密码优先取 .env 中部署时生成的值；旧安装回退到持久化的 webui.json。
+    local token=''
+    if [ -f ./.env ]; then
+        token=$(grep -E '^BILI_NAPCAT_WEBUI_TOKEN=' ./.env | tail -n1 | cut -d= -f2-)
+    fi
+    if [ -z "$token" ] && [ -f ./napcat/config/webui.json ]; then
+        token=$(sed -n 's/.*"token":[[:space:]]*"\([^"]*\)".*/\1/p' ./napcat/config/webui.json | tail -n1)
+    fi
+    printf '%s' "$token"
+}
+
+report_qq_panel_access() {
+    case "$QQ_SERVICE" in
+        llbot)
+            if [ -f ./llbot/data/webui_token.txt ]; then
+                echo "LLBot 面板: http://<服务器IP>:3080"
+                echo "LLBot 面板密码: $(cat ./llbot/data/webui_token.txt)"
+            fi
+            ;;
+        napcat)
+            local token
+            token=$(resolve_napcat_webui_token)
+            echo "NapCat 面板: http://<服务器IP>:6099/webui"
+            if [ -n "$token" ]; then
+                echo "NapCat 面板密码: $token"
+            else
+                warn '未找到 NapCat 面板密码，请执行 docker logs napcat 查看。'
+            fi
+            ;;
+    esac
+}
+
 update_existing_containers() {
     info "检测到已有安装，仅更新现有容器。"
     info "校验现有 Compose 配置"
@@ -511,6 +546,8 @@ update_existing_containers() {
     compose ps
 
     echo
+    report_qq_panel_access
+    echo
     info "容器更新完成。现有配置和数据均已保留。"
 }
 
@@ -518,6 +555,9 @@ write_compose_env() {
     local env_file="$1"
     local bot_image="$2"
     local dashboard_port="$3"
+    if [ "$QQ_IMPLEMENTATION" = 'napcat' ] && [ -z "$NAPCAT_WEBUI_TOKEN" ]; then
+        NAPCAT_WEBUI_TOKEN=$(random_token)
+    fi
     cat > "$env_file" <<EOF
 BILI_BOT_IMAGE=$bot_image
 BILI_NAPCAT_IMAGE=$NAPCAT_IMAGE_DEFAULT
@@ -528,6 +568,9 @@ BILI_LLBOT_IMAGE=$LLBOT_IMAGE_DEFAULT
 BILI_LLBOT_WEBUI_HOST_PORT=3080
 BILI_QQ_IMPLEMENTATION=$QQ_IMPLEMENTATION
 EOF
+    if [ -n "$NAPCAT_WEBUI_TOKEN" ]; then
+        printf 'BILI_NAPCAT_WEBUI_TOKEN=%s\n' "$NAPCAT_WEBUI_TOKEN" >> "$env_file"
+    fi
     set_setup_operator_ownership "$env_file"
     chmod 600 "$env_file"
 }
@@ -780,6 +823,10 @@ start_qq_service() {
     case "$QQ_SERVICE" in
         napcat)
             compose up -d napcat || warn 'NapCat 启动失败，可在 Bot 管理面板修改接入配置。'
+            local napcat_token
+            napcat_token=$(resolve_napcat_webui_token)
+            echo "NapCat 面板: http://<服务器IP>:6099/webui"
+            [ -z "$napcat_token" ] || echo "NapCat 面板密码: $napcat_token"
             warn '请完成 QQ 扫码；二维码可通过 docker logs -f napcat 查看。'
 
             ;;
@@ -1013,6 +1060,7 @@ main() {
     info "部署完成。"
     echo "WebUI: http://<服务器IP>:$dashboard_port"
     [ -z "$dashboard_password" ] || echo "面板密码: $dashboard_password"
+    report_qq_panel_access
     echo "Bot 日志: docker logs -f bili-qq-bot"
 }
 
