@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-ISC-blue.svg) ![Docker](https://img.shields.io/badge/docker-ready-blue) ![Node](https://img.shields.io/badge/node-%3E%3D22.12.0-green) ![Python](https://img.shields.io/badge/python-%3E%3D3.10-yellow)
 
-基于 [NapCat](https://github.com/NapNeko/NapCatQQ) / OneBot 的 Bilibili 链接解析机器人，并提供 QQ 官方机器人 OpenAPI Provider（可选）。它能智能识别并解析 B 站各种类型的链接，并为这些内容生成高清预览卡片。
+基于 OneBot 11 开发的 订阅和链接解析机器人，可选 QQ 官方机器人 OpenAPI Provider。它能智能识别并解析B站各种类型的链接，并为这些内容生成高清预览卡片，还支持订阅直播/投稿推送。
 
 ## 目录
 
@@ -10,7 +10,6 @@
 - [📸 预览效果](#预览效果)
 - [🚀 一键快速部署](#一键快速部署)
 - [🖥️ WebUI 管理面板](#webui-管理面板)
-- [📂 项目结构](#项目结构)
 - [💬 指令列表](#指令列表)
 
 ---
@@ -27,11 +26,9 @@
     *   小程序/短链 (b23.tv) - 自动还原目标链接
 
 *   🎨 **高颜值预览**
-    *   使用 Puppeteer 生成精美长截图卡片（默认 Noto Sans CJK SC + Noto Sans Sinhala + Noto Color Emoji 字体链）
-    *   统一设计系统：支持定时深色模式，毛玻璃视觉风格
+    *   生成精美长截图卡片，支持浅色 / 深色 / 定时深色模式，毛玻璃视觉风格
     *   智能配色：自动提取装扮卡片重点色，动态调整氛围背景
-    *   SVG 矢量图标 & Emoji，无乱码，视觉统一
-    *   专栏作者头部支持头像框、认证、等级，以及可从动态装扮卡回补的粉丝装扮卡与编号
+    *   专栏与动态卡片还原头像框、认证、装扮与粉丝编号等细节
 
 *   ⬇️ **视频下载**
     *   解析到 B 站视频链接后可异步自动下载并发送 MP4（不阻塞预览卡片）
@@ -40,14 +37,14 @@
 
 *   📡 **订阅推送**：内置订阅系统，支持分群订阅与同步关注分组，实时追踪 UP 主动态、视频、专栏、直播与番剧更新
 
-*   🔌 **QQ 接入 Provider**
+*   🔌 **QQ 接入方式**
     *   默认使用 LLBot，可选择 NapCat、已有 OneBot 或 QQ 官方入口
-    *   可在 WebUI 或配置中切换 QQ Official Provider，通过官方 WSS + OpenAPI 收发消息
-    *   Official 模式支持文本、图片、视频、订阅推送、基础指令与机器人消息撤回；NapCat 专属群管能力会按 capability 自动隐藏或降级
+    *   可在 WebUI 或配置中切换 QQ 官方入口，通过官方接口收发消息
+    *   官方入口支持文本、图片、视频、订阅推送、基础指令与消息撤回；部分 OneBot 专属群管能力会自动隐藏或降级
 
 *   🖥️ **WebUI 管理面板**：内置可视化管理后台，支持分群配置、QQ 连接模式、视频下载策略、订阅管理、日志查看、B站登录等操作，无需命令行
 
-*   🐳 **Docker 化部署**：一键部署，内置 Noto CJK、多语种 Noto 与 Emoji 字体，并包含 FFmpeg 依赖
+*   🐳 **Docker 一键部署**：开箱即用，无需手动安装依赖
 
 ## 预览效果
 
@@ -82,7 +79,6 @@
 </details>
 
 ### 🌙 深色模式
-*注：预览图关闭了左上角标签功能。*
 <table align="center">
   <tr>
     <td align="center"><img src="docs/images/帮助菜单-深色模式.webp" height="400" /><br /><b>帮助菜单</b></td>
@@ -153,7 +149,7 @@ wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/Unsplash
 
 ### 登录
 
-首次访问需要输入密码登录。默认密码为 `admin`，请直接修改 `config/config.yaml` 的 `dashboard.password`。JWT Secret 也保存在该 YAML 中，但 API/WebUI 只返回 `configured` 状态，绝不回显明文。
+首次访问需要输入密码登录。默认密码为 `admin`，请部署后尽快修改 `config/config.yaml` 的 `dashboard.password`。
 
 ### 功能模块
 
@@ -164,38 +160,9 @@ wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/Unsplash
 | **全局设置** | 常规配置（轮询间隔等）、全局黑名单、B站登录、视频下载全局策略、应用重启 |
 | **实时日志** | WebSocket 实时推送应用日志，支持暂停/清空 |
 
-> 说明：WebUI 仅管理真实群聊标识：NapCat 使用数字群号，QQ Official 使用安全的 `group_openid`；不支持私聊会话（`private_*`）管理。
+> 说明：WebUI 仅管理群聊配置，暂不支持私聊会话。
 
 </details>
-
-## 项目结构
-
-```text
-SubX-bot/
-├── src/                    # Node.js bot、命令、服务、渲染和 Dashboard 后端
-├── dashboard/              # React/Vite WebUI
-├── test/
-│   ├── runners/            # 测试运行入口，例如 run-unit-tests.js
-│   ├── tools/              # 可复用本地验证工具，例如 Preview Lab
-│   ├── fixtures/           # 稳定测试夹具
-│   ├── unit/               # 按领域分类的单元测试
-│   │   ├── bilibili/
-│   │   ├── commands/
-│   │   ├── config/
-│   │   ├── dashboard/
-│   │   ├── links/
-│   │   ├── messages/
-│   │   ├── preview/
-│   │   ├── rendering/
-│   │   ├── services/
-│   │   └── subscriptions/
-│   └── output/             # 本地预览/测试输出，不作为源码管理目标
-├── docs/                   # 计划、归档记录、图片和接口文档
-├── config/                 # 启动配置和示例
-├── data/                   # 运行时数据，默认不提交
-├── logs/                   # 应用日志
-└── napcat/                 # NapCat QQ 客户端数据
-```
 
 ## 指令列表
 

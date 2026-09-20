@@ -17,6 +17,12 @@ LLBOT_IMAGE_DEFAULT='linyuchen/llbot:latest'
 QQ_IMPLEMENTATION='llbot'
 QQ_SERVICE='llbot'
 LLBOT_WEBUI_PASSWORD=''
+LLBOT_AUTH_TOKEN=''
+LLBOT_AUTH_TOKEN_URL='https://auth.luckylillia.com/tokens'
+LLBOT_QR_HELPER_URLS=(
+    'https://raw.githubusercontent.com/UnsplashZ/SubX-bot/main/scripts/llbot-qrcode.py'
+    'https://gh-proxy.org/https://raw.githubusercontent.com/UnsplashZ/SubX-bot/main/scripts/llbot-qrcode.py'
+)
 OFFICIAL_APP_ID=''
 OFFICIAL_CLIENT_SECRET=''
 COMPOSE_FILE=''
@@ -547,9 +553,227 @@ write_llbot_config() {
 EOF
     printf '%s\n' "$LLBOT_WEBUI_PASSWORD" > "$install_dir/llbot/data/webui_token.txt"
     printf 'BILI_BOT_QQ=%s\n' "$bot_qq" >> "$install_dir/.env"
+    if [ -n "$LLBOT_AUTH_TOKEN" ]; then
+        # LLBot direct 模式标准机制：watcher 监听 data/auth_token.txt 变化，
+        # 读取 -> 校验 -> 校验通过即触发登录（等价 WebUI 录入）。
+        printf '%s\n' "$LLBOT_AUTH_TOKEN" > "$install_dir/llbot/data/auth_token.txt"
+        chmod 600 "$install_dir/llbot/data/auth_token.txt"
+        info 'LLBot Auth Token 已写入 llbot/data/auth_token.txt。'
+    fi
     set_container_ownership "$install_dir/llbot/data/config_$bot_qq.json" "$install_dir/llbot/data/webui_token.txt"
+    [ ! -f "$install_dir/llbot/data/auth_token.txt" ] || set_container_ownership "$install_dir/llbot/data/auth_token.txt"
     chmod 700 "$install_dir/llbot/data"
     chmod 600 "$install_dir/llbot/data/config_$bot_qq.json" "$install_dir/llbot/data/webui_token.txt"
+}
+
+# ---- LLBot 命令行登录（Auth Token 录入 + 终端二维码扫码） ----
+# 依赖 LLBot WebUI 后端接口（X-Webui-Token: sha256(webui密码) 鉴权）：
+#   GET  /api/auth-token/status   token 校验状态
+#   GET  /api/login-info          { online, uin, ... }
+#   GET  /api/quick-login-list    历史会话快速登录
+#   GET  /api/login-qrcode        { qrcodeUrl, expireTime, ... }
+# 任一环节不可用都降级为原有提示（打开 WebUI 完成登录），不影响部署流程。
+
+sha256_hex() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s' "$1" | sha256sum | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+    else
+        return 1
+    fi
+}
+
+llbot_webui_base() {
+    local port
+    port=$(grep -E '^BILI_LLBOT_WEBUI_HOST_PORT=' ./.env 2>/dev/null | tail -n1 | cut -d= -f2)
+    printf 'http://127.0.0.1:%s' "${port:-3080}"
+}
+
+llbot_api_get() {
+    curl -fsS -m 10 -H "X-Webui-Token: $LLBOT_WEBUI_AUTH" "$(llbot_webui_base)$1" 2>/dev/null
+}
+
+llbot_api_post() {
+    curl -fsS -m 10 -H "X-Webui-Token: $LLBOT_WEBUI_AUTH" -H 'content-type: application/json' -d "$2" "$(llbot_webui_base)$1" 2>/dev/null
+}
+
+prompt_llbot_auth_token() {
+    local install_dir="$1" existing=''
+    if [ -f "$install_dir/llbot/data/auth_token.txt" ]; then
+        existing=$(tr -d '[:space:]' < "$install_dir/llbot/data/auth_token.txt" 2>/dev/null)
+    fi
+    if [ -n "$existing" ]; then
+        LLBOT_AUTH_TOKEN="$existing"
+        info '检测到已有 LLBot Auth Token，将复用。'
+        return 0
+    fi
+    echo
+    info 'LLBot 登录 QQ 需要 Auth Token（sign 鉴权用，官方校验通过后会自动发起登录）。'
+    info "申请地址: $LLBOT_AUTH_TOKEN_URL"
+    local value=''
+    while [ -z "$value" ]; do
+        read -r -p '请输入 LLBot Auth Token: ' value
+        value=$(printf '%s' "$value" | tr -d '[:space:]')
+        [ -n "$value" ] || warn 'Auth Token 不能为空。'
+    done
+    LLBOT_AUTH_TOKEN="$value"
+}
+
+resolve_llbot_qr_helper() {
+    # 优先使用随仓库分发的本地副本（git clone 安装），否则从 GitHub 下载到临时文件。
+    local candidate
+    for candidate in './scripts/llbot-qrcode.py'; do
+        if [ -f "$candidate" ]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+    command -v python3 >/dev/null 2>&1 || return 1
+    local url tmp
+    tmp=$(mktemp /tmp/llbot-qrcode.XXXXXX.py) || return 1
+    for url in "${LLBOT_QR_HELPER_URLS[@]}"; do
+        if curl -fsSL -m 15 "$url" -o "$tmp" 2>/dev/null && grep -q 'class QrCode' "$tmp"; then
+            printf '%s' "$tmp"
+            return 0
+        fi
+    done
+    rm -f "$tmp"
+    return 1
+}
+
+render_llbot_qr() {
+    local helper
+    helper=$(resolve_llbot_qr_helper) || return 1
+    python3 "$helper" "$1" 2>/dev/null || return 1
+}
+
+llbot_poll_online() {
+    # 返回 0 表示已在线
+    local body
+    body=$(llbot_api_get /api/login-info) || return 1
+    printf '%s' "$body" | grep -q '"online":true'
+}
+
+llbot_refresh_auth_token() {
+    # token 校验失败时引导重新输入并改写文件（watcher 监听文件变化重新校验）。
+    local body validation message
+    body=$(llbot_api_get /api/auth-token/status) || return 0
+    validation=$(printf '%s' "$body" | sed -n 's/.*"validation":"\([^"]*\)".*/\1/p')
+    [ "$validation" = 'invalid' ] || return 0
+    message=$(printf '%s' "$body" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
+    warn "LLBot Auth Token 校验失败${message:+：$message}"
+    LLBOT_AUTH_TOKEN=''
+    prompt_llbot_auth_token "$(pwd)"
+    [ -n "$LLBOT_AUTH_TOKEN" ] || return 0
+    printf '%s\n' "$LLBOT_AUTH_TOKEN" > ./llbot/data/auth_token.txt
+    chmod 600 ./llbot/data/auth_token.txt
+    info '已更新 LLBot Auth Token，等待重新校验...'
+    sleep 5
+}
+
+llbot_try_quick_login() {
+    # 有历史会话时提供免扫码快速登录；返回 0 表示已触发或无需处理。
+    local body uins i uin
+    body=$(llbot_api_get /api/quick-login-list) || return 0
+    uins=$(printf '%s' "$body" | grep -o '"uin":[0-9]*' | cut -d: -f2 | sort -u)
+    [ -n "$uins" ] || return 0
+    echo
+    info '检测到以下可快速登录的 QQ 账号（复用本地会话，无需扫码）：'
+    i=0
+    for uin in $uins; do
+        i=$((i + 1))
+        echo "  $i) $uin"
+    done
+    local choice=''
+    read -r -p '选择序号直接登录，直接回车改为扫码登录: ' choice
+    [ -n "$choice" ] || return 1
+    [[ "$choice" =~ ^[0-9]+$ ]] || { warn '无效的选择，改用扫码登录。'; return 1; }
+    uin=$(printf '%s\n' "$uins" | sed -n "${choice}p")
+    [ -n "$uin" ] || { warn '无效的选择，改用扫码登录。'; return 1; }
+    llbot_api_post /api/quick-login "{\"uin\":\"$uin\"}" >/dev/null || warn '快速登录触发失败，改用扫码登录。'
+    local deadline=$(( $(date +%s) + 30 ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        if llbot_poll_online; then
+            info "QQ $uin 快速登录成功。"
+            return 0
+        fi
+        sleep 3
+    done
+    warn '快速登录未及时生效，改用扫码登录。'
+    return 1
+}
+
+llbot_qr_login() {
+    local deadline=$(( $(date +%s) + 300 ))
+    local qr_json url expire qr_deadline answered
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        if llbot_poll_online; then
+            info 'QQ 登录成功。'
+            return 0
+        fi
+        qr_json=$(llbot_api_get /api/login-qrcode) || { sleep 3; continue; }
+        url=$(printf '%s' "$qr_json" | sed -n 's/.*"qrcodeUrl":"\([^"]*\)".*/\1/p')
+        expire=$(printf '%s' "$qr_json" | sed -n 's/.*"expireTime":\([0-9]*\).*/\1/p')
+        [ -n "$url" ] || { sleep 3; continue; }
+        echo
+        echo '--------------------------------------------------------------'
+        info '请使用手机 QQ 扫描下方二维码登录'
+        if ! render_llbot_qr "$url"; then
+            warn '终端二维码渲染失败（需要 python3）。'
+            return 1
+        fi
+        echo '二维码过期会自动刷新；输入 s 回车跳过，稍后可在 LLBot WebUI 扫码。'
+        qr_deadline=$(( $(date +%s) + ${expire:-60} - 5 ))
+        while [ "$(date +%s)" -lt "$qr_deadline" ]; do
+            if llbot_poll_online; then
+                echo
+                info 'QQ 登录成功。'
+                return 0
+            fi
+            answered=''
+            read -r -t 3 answered || true
+            if [ "$answered" = 's' ] || [ "$answered" = 'S' ]; then
+                warn '已跳过命令行扫码。'
+                return 1
+            fi
+        done
+        info '二维码已过期，正在获取新二维码...'
+    done
+    warn '扫码登录等待超时。'
+    return 1
+}
+
+llbot_cli_login() {
+    # 交互式命令行登录；任何失败都静默降级（返回 1），由调用方打印 WebUI 指引。
+    # 自动化测试模式无真实 WebUI，直接跳过轮询等待。
+    [ "${BILI_SETUP_TEST_MODE:-0}" != '1' ] || return 1
+    [ "$QQ_IMPLEMENTATION" = 'llbot' ] || return 1
+    command -v curl >/dev/null 2>&1 || return 1
+    [ -f ./llbot/data/webui_token.txt ] || return 1
+    LLBOT_WEBUI_AUTH=$(sha256_hex "$(cat ./llbot/data/webui_token.txt)") || return 1
+
+    echo
+    info '正在等待 LLBot WebUI 就绪...'
+    local ready='' i
+    for i in $(seq 1 30); do
+        if llbot_api_get /api/login-info >/dev/null 2>&1; then ready=1; break; fi
+        sleep 3
+    done
+    [ -n "$ready" ] || { warn 'LLBot WebUI 未在预期时间内就绪。'; return 1; }
+
+    llbot_refresh_auth_token || true
+
+    if llbot_poll_online; then
+        info 'LLBot 已在线，无需重新登录。'
+        return 0
+    fi
+
+    if llbot_try_quick_login; then
+        return 0
+    fi
+
+    llbot_qr_login || return 1
 }
 
 start_qq_service() {
@@ -561,10 +785,14 @@ start_qq_service() {
             ;;
         llbot)
             compose up -d llbot || warn 'LLBot 启动失败，可在 Bot 管理面板修改接入配置。'
-            warn '请打开 LLBot 面板 http://127.0.0.1:3080，录入有效 Auth Token 并扫码登录 QQ。'
-            warn '远程部署请先建立 SSH 隧道：ssh -L 3080:127.0.0.1:3080 <服务器>'
-            [ -z "$LLBOT_WEBUI_PASSWORD" ] || printf 'LLBot 面板密码: %s\n' "$LLBOT_WEBUI_PASSWORD"
-            warn '已有安装的面板密码保存在 llbot/data/webui_token.txt。'
+            if llbot_cli_login; then
+                info 'LLBot QQ 登录完成。'
+            else
+                warn '命令行登录未完成，请打开 LLBot 面板 http://127.0.0.1:3080 录入 Auth Token 并扫码登录。'
+                warn '远程部署请先建立 SSH 隧道：ssh -L 3080:127.0.0.1:3080 <服务器>'
+                [ -z "$LLBOT_WEBUI_PASSWORD" ] || printf 'LLBot 面板密码: %s\n' "$LLBOT_WEBUI_PASSWORD"
+                warn '已有安装的面板密码保存在 llbot/data/webui_token.txt。'
+            fi
             ;;
         '')
             if [ "$QQ_IMPLEMENTATION" = 'official' ]; then
@@ -754,6 +982,10 @@ main() {
         validate_qq_number "管理员 QQ 号" "$admin_qq"
         dashboard_password=$(prompt_default "WebUI 面板密码" "admin")
         read -r -p "允许访问 WebUI 的公网 Origin (可留空): " allowed_origins
+
+        if [ "$QQ_IMPLEMENTATION" = 'llbot' ]; then
+            prompt_llbot_auth_token "$install_dir"
+        fi
 
         case "$QQ_IMPLEMENTATION" in
             napcat) write_napcat_config "$install_dir" "$bot_qq" "$ws_token" ;;
