@@ -10,7 +10,7 @@ services:
       TZ: Asia/Shanghai
       AUTO_LOGIN_QQ: ${BILI_BOT_QQ:-}
     ports:
-      - "127.0.0.1:${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080"
+      - "${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080"
     volumes:
       - ./llbot/data:/app/llbot/data
       - ./onebot/media:/app/.config/QQ/tmp

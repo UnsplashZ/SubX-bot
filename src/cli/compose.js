@@ -277,7 +277,7 @@ function matchesKnownSetupTemplate(existingCompose) {
         image: '${BILI_LLBOT_IMAGE:-linyuchen/llbot:latest}',
         restart: 'always', init: true, stop_grace_period: '30s',
         environment: { TZ: 'Asia/Shanghai', AUTO_LOGIN_QQ: '${BILI_BOT_QQ:-}' },
-        ports: ['127.0.0.1:${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080'],
+        ports: ['${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080'],
         volumes: ['./llbot/data:/app/llbot/data', './onebot/media:/app/.config/QQ/tmp'],
         networks: ['bot_network']
     }

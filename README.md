@@ -125,7 +125,7 @@ wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/Unsplash
 
 | 接入方式 | 说明 |
 | --- | --- |
-| LLBot（默认） | 默认 `linyuchen/llbot:latest`，扫码登录。面板绑定 `127.0.0.1:3080`，远程安装后执行 `ssh -L 3080:127.0.0.1:3080 <服务器>`，再打开本机 `http://127.0.0.1:3080`；初始面板密码在 `llbot/data/webui_token.txt`，Auth Token 获取见 [LLBot 文档](https://luckylillia.com)。 |
+| LLBot（默认） | 默认 `linyuchen/llbot:latest`，扫码登录。LLBot 面板暴露在 `3080` 端口，浏览器打开 `http://<服务器IP>:3080`；初始面板密码在 `llbot/data/webui_token.txt`，Auth Token 获取见 [LLBot 文档](https://luckylillia.com)。 |
 | NapCat | 保留 NapCat 容器、账号配置与扫码方式。 |
 | QQ 官方入口 | 只部署 Bot；AppID / ClientSecret 可在安装时输入，也可稍后到 WebUI 补充。 |
 | 已有 OneBot v11 | 只部署 Bot；填写从 Bot 容器可访问的 WebSocket 地址和实际 Token。 |

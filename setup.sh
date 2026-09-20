@@ -347,7 +347,7 @@ write_compose_template() {
       TZ: Asia/Shanghai
       AUTO_LOGIN_QQ: ${BILI_BOT_QQ:-}
     ports:
-      - "127.0.0.1:${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080"
+      - "${BILI_LLBOT_WEBUI_HOST_PORT:-3080}:3080"
     volumes:
       - ./llbot/data:/app/llbot/data
       - ./onebot/media:/app/.config/QQ/tmp
@@ -788,8 +788,7 @@ start_qq_service() {
             if llbot_cli_login; then
                 info 'LLBot QQ 登录完成。'
             else
-                warn '命令行登录未完成，请打开 LLBot 面板 http://127.0.0.1:3080 录入 Auth Token 并扫码登录。'
-                warn '远程部署请先建立 SSH 隧道：ssh -L 3080:127.0.0.1:3080 <服务器>'
+                warn '命令行登录未完成，请打开 LLBot 面板 http://<服务器IP>:3080 录入 Auth Token 并扫码登录。'
                 [ -z "$LLBOT_WEBUI_PASSWORD" ] || printf 'LLBot 面板密码: %s\n' "$LLBOT_WEBUI_PASSWORD"
                 warn '已有安装的面板密码保存在 llbot/data/webui_token.txt。'
             fi
