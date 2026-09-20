@@ -11,6 +11,7 @@ function createStub() {
     const calls = []
     let generation = 7
     let secretConfigured = false
+    let tokenConfigured = false
     const config = {
         service: {
             lastReloadResult: null,
@@ -31,6 +32,8 @@ function createStub() {
         getDashboardConfigSnapshot() {
             return {
                 qqProvider: 'napcat',
+                wsUrl: 'ws://localhost:3001',
+                wsTokenConfigured: tokenConfigured,
                 qqOfficialClientSecretConfigured: secretConfigured,
                 generation
             }
@@ -51,6 +54,12 @@ function createStub() {
             }
             if (operations.some((operation) => operation.path.join('.') === 'qq.official.clientSecret' && operation.op === 'clear-secret')) {
                 secretConfigured = false
+            }
+            if (operations.some((operation) => operation.path.join('.') === 'qq.napcat.wsToken' && operation.op === 'set')) {
+                tokenConfigured = true
+            }
+            if (operations.some((operation) => operation.path.join('.') === 'qq.napcat.wsToken' && operation.op === 'clear-secret')) {
+                tokenConfigured = false
             }
             generation += 1
             return {
@@ -150,6 +159,33 @@ describe('dashboard config v1 API', () => {
         assert.strictEqual(cleared.status, 200)
         assert.strictEqual(cleared.body.config.qqOfficialClientSecretConfigured, false)
         assert.ok(stub.calls[2].operations.some((operation) => operation.op === 'clear-secret'))
+    })
+
+    it('accepts OneBot wsUrl/wsToken updates, keeps empty token unchanged and requires explicit clear', async () => {
+        const stub = createStub()
+        const response = await request(createApp(stub))
+            .post('/api/config')
+            .send({ expectedGeneration: 7, wsUrl: 'ws://napcat:3001', wsToken: 'fixture-token' })
+
+        assert.strictEqual(response.status, 200)
+        assert.strictEqual(response.body.config.wsTokenConfigured, true)
+        assert.ok(!JSON.stringify(response.body).includes('fixture-token'))
+        assert.ok(stub.calls[0].operations.some((operation) => operation.path.join('.') === 'qq.napcat.wsUrl'))
+        assert.ok(stub.calls[0].operations.some((operation) => operation.path.join('.') === 'qq.napcat.wsToken'))
+
+        const unchanged = await request(createApp(stub))
+            .post('/api/config')
+            .send({ expectedGeneration: 8, wsUrl: 'ws://napcat:3002', wsToken: '' })
+        assert.strictEqual(unchanged.status, 200)
+        assert.ok(stub.calls[1].operations.some((operation) => operation.path.join('.') === 'qq.napcat.wsUrl'))
+        assert.ok(!stub.calls[1].operations.some((operation) => operation.path.join('.') === 'qq.napcat.wsToken'))
+
+        const cleared = await request(createApp(stub))
+            .post('/api/config')
+            .send({ expectedGeneration: 9, secretActions: { wsToken: 'clear' } })
+        assert.strictEqual(cleared.status, 200)
+        assert.strictEqual(cleared.body.config.wsTokenConfigured, false)
+        assert.ok(stub.calls[2].operations.some((operation) => operation.op === 'clear-secret' && operation.path.join('.') === 'qq.napcat.wsToken'))
     })
 
     it('returns a redacted 409 conflict and rejects missing generation', async () => {

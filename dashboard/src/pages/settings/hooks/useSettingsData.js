@@ -226,7 +226,9 @@ export default function useSettingsData(show) {
         const expectedGeneration = requireExpectedGeneration()
         const sanitized = { ...values }
         delete sanitized.qqOfficialClientSecretConfigured
+        delete sanitized.wsTokenConfigured
         if (!sanitized.qqOfficialClientSecret) delete sanitized.qqOfficialClientSecret
+        if (!sanitized.wsToken) delete sanitized.wsToken
         let response
         try {
             response = await api.post('/api/config', {
@@ -286,6 +288,16 @@ export default function useSettingsData(show) {
         } catch (error) {
             console.error('Failed to clear Official Secret:', error)
             show(error.response?.data?.error || '清除 Secret 失败', 'error')
+        }
+    }
+
+    const clearOnebotToken = async () => {
+        try {
+            await applyConfig({}, { wsToken: 'clear' })
+            show('OneBot Access Token 已清除。', 'success')
+        } catch (error) {
+            console.error('Failed to clear OneBot token:', error)
+            show(error.response?.data?.error || '清除 Token 失败', 'error')
         }
     }
 
@@ -370,6 +382,7 @@ export default function useSettingsData(show) {
         setQqProviderConfig,
         qqProviderStatus,
         clearOfficialSecret,
+        clearOnebotToken,
         autoSaveState,
         configStatus,
         migrationStatus,

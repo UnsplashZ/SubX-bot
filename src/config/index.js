@@ -366,7 +366,7 @@ const config = {
             'previewGradientColor1', 'previewGradientColor2',
             'videoDownloadEnabled', 'videoDownloadResolution',
             'videoDownloadMaxDuration', 'videoDownloadAutoClean',
-            'videoDownloadCleanTimeout', 'qqProvider', 'qqOfficialAppId',
+            'videoDownloadCleanTimeout', 'wsUrl', 'qqProvider', 'qqOfficialAppId',
             'qqOfficialApiBase', 'qqOfficialTokenUrl',
             'qqOfficialUseShardedGateway', 'qqOfficialIntents',
             'qqOfficialGatewayAckTimeoutMs', 'qqOfficialMediaUploadMode',
@@ -376,6 +376,7 @@ const config = {
         ]
         const snapshot = Object.fromEntries(keys.map((key) => [key, clone(this[key])]))
         snapshot.qqOfficialClientSecretConfigured = Boolean(this.qqOfficialClientSecret)
+        snapshot.wsTokenConfigured = Boolean(this.wsToken)
         snapshot.generation = this.getStatus().documentGeneration
         return snapshot
     }

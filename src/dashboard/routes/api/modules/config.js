@@ -19,6 +19,8 @@ const ALLOWED_GLOBAL_CONFIG_KEYS = new Set([
     'videoDownloadMaxDuration',
     'videoDownloadAutoClean',
     'videoDownloadCleanTimeout',
+    'wsUrl',
+    'wsToken',
     'qqProvider',
     'qqOfficialAppId',
     'qqOfficialClientSecret',
@@ -54,7 +56,8 @@ const BOOLEAN_KEYS = new Set([
     'qqOfficialUseShardedGateway'
 ])
 const SECRET_KEY_TO_PATH = Object.freeze({
-    qqOfficialClientSecret: FLAT_KEY_TO_PATH.qqOfficialClientSecret
+    qqOfficialClientSecret: FLAT_KEY_TO_PATH.qqOfficialClientSecret,
+    wsToken: FLAT_KEY_TO_PATH.wsToken
 })
 
 function clone(value) {

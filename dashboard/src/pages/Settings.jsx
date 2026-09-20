@@ -104,6 +104,7 @@ const Settings = () => {
         config={settingsData.qqProviderConfig}
         status={settingsData.qqProviderStatus}
         onClearSecret={settingsData.clearOfficialSecret}
+        onClearToken={settingsData.clearOnebotToken}
         disabled={recoveryRequired}
         onChange={(field, value) => settingsData.setQqProviderConfig(p => ({ ...p, [field]: value }))}
       />

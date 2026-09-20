@@ -11,11 +11,12 @@ const QqProviderSection = ({
     config,
     status,
     onClearSecret,
+    onClearToken,
     onChange,
     disabled = false
 }) => {
     const provider = config.qqProvider === 'official' ? 'official' : 'napcat'
-    const statusProvider = status?.id === 'official' ? 'QQ Official' : status?.id === 'napcat' ? 'OneBot / NapCat' : '未连接'
+    const statusProvider = status?.id === 'official' ? 'QQ Official' : status?.id === 'napcat' ? 'OneBot' : '未连接'
     const connectionState = status?.connectionState || status?.state || 'unknown'
     const gatewayState = status?.gateway?.state || ''
     const tokenTtlSeconds = Number(status?.token?.tokenTtlSeconds || 0)
@@ -45,7 +46,7 @@ const QqProviderSection = ({
 
                     <SettingRow
                         title="连接 Provider"
-                        description="OneBot/NapCat 为默认兼容模式；QQ Official 使用官方机器人开放平台。"
+                        description="OneBot 为默认兼容模式，适配各类 OneBot v11 实现；QQ Official 使用官方机器人开放平台。"
                         control={
                             <select
                                 value={provider}
@@ -53,11 +54,52 @@ const QqProviderSection = ({
                                 onChange={(event) => onChange('qqProvider', event.target.value)}
                                 className="field-control w-full px-3 py-2 md:w-56"
                             >
-                                <option value="napcat">OneBot / NapCat</option>
+                                <option value="napcat">OneBot</option>
                                 <option value="official">QQ Official</option>
                             </select>
                         }
                     />
+
+                    {provider !== 'official' && (
+                        <>
+                            <SettingRow
+                                title="WebSocket 地址"
+                                description="OneBot v11 服务的 WebSocket 地址，例如 ws://napcat:3001。"
+                                control={
+                                    <input
+                                        type="text"
+                                        value={config.wsUrl || ''}
+                                        disabled={disabled}
+                                        onChange={(event) => onChange('wsUrl', event.target.value)}
+                                        className="field-control w-full px-3 py-2 md:w-72"
+                                    />
+                                }
+                            />
+
+                            <SettingRow
+                                title="Access Token"
+                                description={config.wsTokenConfigured ? '已配置；留空不会覆盖当前值，清除必须显式操作。' : '尚未配置；服务端未开启鉴权时可留空。'}
+                                status={<KeyRound size={14} />}
+                                control={
+                                    <div className="flex flex-col gap-2 sm:flex-row">
+                                        <input
+                                            type="password"
+                                            value={config.wsToken || ''}
+                                            disabled={disabled}
+                                            onChange={(event) => onChange('wsToken', event.target.value)}
+                                            placeholder={config.wsTokenConfigured ? '已配置，留空不变' : ''}
+                                            className="field-control w-full px-3 py-2 md:w-72"
+                                        />
+                                        {config.wsTokenConfigured && (
+                                            <Button type="button" size="sm" variant="danger" disabled={disabled} onClick={onClearToken}>
+                                                显式清除
+                                            </Button>
+                                        )}
+                                    </div>
+                                }
+                            />
+                        </>
+                    )}
 
                     {provider === 'official' && (
                         <>

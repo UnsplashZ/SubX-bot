@@ -14,6 +14,9 @@ export const DEFAULT_VIDEO_DOWNLOAD_CONFIG = {
 
 export const DEFAULT_QQ_PROVIDER_CONFIG = {
     qqProvider: 'napcat',
+    wsUrl: 'ws://localhost:3001',
+    wsToken: '',
+    wsTokenConfigured: false,
     qqOfficialAppId: '',
     qqOfficialClientSecret: '',
     qqOfficialClientSecretConfigured: false,
@@ -74,6 +77,7 @@ export function createHydratedSettingsState(snapshot = {}, status = {}) {
         videoDownloadConfig: extractConfig(snapshot, DEFAULT_VIDEO_DOWNLOAD_CONFIG),
         qqProviderConfig: {
             ...extractConfig(snapshot, DEFAULT_QQ_PROVIDER_CONFIG),
+            wsToken: '',
             qqOfficialClientSecret: '',
             qqOfficialRootOpenids: Array.isArray(snapshot.qqOfficialRootOpenids)
                 ? snapshot.qqOfficialRootOpenids
