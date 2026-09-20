@@ -4,7 +4,7 @@
 
 基于 [NapCat](https://github.com/NapNeko/NapCatQQ) / OneBot 的 Bilibili 链接解析机器人，并提供 QQ 官方机器人 OpenAPI Provider（可选）。它能智能识别并解析 B 站各种类型的链接，并为这些内容生成高清预览卡片。
 
-> 旧版 AI 对话、向量记忆、用户画像、MCP 工具调用等实验性能力已移除。当前分支使用新的 Agent 架构：命令和 B 站链接仍走确定性系统链路，自然语言消息可进入受限 Agent，由 LLM 判断是否回复、记忆或调用白名单工具。
+> 旧版 AI 对话、向量记忆、用户画像、MCP 工具调用等实验性能力已移除。命令和 B 站链接均走确定性系统链路，机器人不会调用 LLM 处理消息。
 
 ## 目录
 
@@ -12,7 +12,6 @@
 - [📸 预览效果](#预览效果)
 - [🚀 一键快速部署](#一键快速部署)
 - [🖥️ WebUI 管理面板](#webui-管理面板)
-- [🤖 Agent 功能](#agent-功能)
 - [⚙️ 配置说明](#配置说明)
 - [🧪 开发与测试](#开发与测试)
 - [📂 项目结构](#项目结构)
@@ -48,15 +47,9 @@
 *   🔌 **QQ 接入 Provider**
     *   默认使用 LLBot，可选择 NapCat、已有 OneBot 或 QQ 官方入口
     *   可在 WebUI 或配置中切换 QQ Official Provider，通过官方 WSS + OpenAPI 收发消息
-    *   Official 模式支持文本、图片、视频、订阅推送、基础指令、Agent 基础回复与机器人消息撤回；NapCat 专属群管能力会按 capability 自动隐藏或降级
+    *   Official 模式支持文本、图片、视频、订阅推送、基础指令与机器人消息撤回；NapCat 专属群管能力会按 capability 自动隐藏或降级
 
 *   🖥️ **WebUI 管理面板**：内置可视化管理后台，支持分群配置、QQ 连接模式、视频下载策略、订阅管理、日志查看、B站登录等操作，无需命令行
-
-*   🤖 **受限 Agent（实验性）**
-    *   自然语言消息可进入 Agent，由 LLM 结合上下文、群聊节奏、记忆和人格决定回复或沉默
-    *   命令消息和 B 站链接不进 LLM，继续走确定性系统 handler
-    *   支持长期记忆、短期上下文、工具确认、权限闸门、审计日志和 WebUI 观测
-    *   支持受限工具：订阅管理、Agent/Bot 配置、B 站查询、QQ 群管理、申请处理、网页读取/搜索/截图和显式学习记忆
 
 *   🐳 **Docker 化部署**：一键部署，内置 Noto CJK、多语种 Noto 与 Emoji 字体，并包含 FFmpeg 依赖
 
@@ -139,7 +132,7 @@ wget -O setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/Unsplash
 
 `setup.sh` 不使用 `install`、`upgrade` 或 `apply` 参数，而是根据安装目录自动选择路径：
 
-- **首次安装**：先选择 LLBot（默认）、NapCat、已有 OneBot v11 服务或 QQ 官方入口，再填写镜像、端口、账号、管理员、WebSocket Token 和可选 Agent LLM；生成对应 Compose、接入配置与唯一的 `config/config.yaml`。
+- **首次安装**：先选择 LLBot（默认）、NapCat、已有 OneBot v11 服务或 QQ 官方入口，再填写镜像、端口、账号、管理员和 WebSocket Token；生成对应 Compose、接入配置与唯一的 `config/config.yaml`。
 - **已有安装更新**：当目录中存在标准 Compose 文件（`compose.yaml`、`compose.yml`、`docker-compose.yaml` 或 `docker-compose.yml`）以及 `config.yaml` 或 legacy 配置时，脚本不会重新询问或改写文件，只执行 Compose 校验、镜像拉取、容器重建和 Bot 健康检查。
 
 脚本独立启动 Bot 管理面板，不以 LLBot/NapCat 登录或鉴权成功作为前置条件。`/api/live` 检查必须通过；QQ 未连接时 `/api/ready` 返回 503，脚本提示接入未就绪，但仍完成面板部署。可立即登录 WebUI 修改连接配置或切换官方入口；Bot 在后台重试，不因 QQ 离线而退出重启。接入就绪观察默认 15 秒，可通过 `BILI_SETUP_READY_TIMEOUT` 调整。旧配置、schema 和业务数据 migration 仍由应用启动时完成。
@@ -155,7 +148,7 @@ LLBot 面板默认仅绑定服务器 `127.0.0.1:3080`。远程安装后执行 `s
 
 LLBot 与已有 OneBot 模式使用 `onebot/media` 共享图片和视频文件，容器内路径为 `/app/.config/QQ/tmp`。连接已有服务时，需将同一目录挂载到该服务的相同路径；跨主机部署需要共享文件系统，单纯连通 WebSocket 不足以保证媒体发送。
 
-目前应用的 OneBot 客户端配置键仍为 `qq.provider: napcat` 和 `qq.napcat.*`，LLBot 复用此客户端，部署实现由 Compose 中的服务决定。LLBot 8.2.1 已实测通过登录、基础只读接口和群聊文字/图片/视频发送及消息回读。兼容层按连接探测实现，自动适配公告删除接口名与群邀请字段；LLBot 不支持单独查询已过滤申请，调用时明确报不支持，识别后从 Agent 工具列表隐藏。SnowLuma 的混合群请求数组保留为 `unclassifiedRequests`，不猜测邀请/申请类型。公告删除等管理写操作未在真实群执行，其中公告删除适配通过模拟接口验证。详见 [实测记录](docs/plans/2026-09-19-onebot-provider-validation.md)。
+目前应用的 OneBot 客户端配置键仍为 `qq.provider: napcat` 和 `qq.napcat.*`，LLBot 复用此客户端，部署实现由 Compose 中的服务决定。LLBot 8.2.1 已实测通过登录、基础只读接口和群聊文字/图片/视频发送及消息回读。兼容层按连接探测实现，自动适配公告删除接口名与群邀请字段；LLBot 不支持单独查询已过滤申请，调用时明确报不支持。SnowLuma 的混合群请求数组保留为 `unclassifiedRequests`，不猜测邀请/申请类型。公告删除等管理写操作未在真实群执行，其中公告删除适配通过模拟接口验证。详见 [实测记录](docs/plans/2026-09-19-onebot-provider-validation.md)。
 
 ```bash
 # 首次安装和后续更新使用同一条命令，并选择同一个安装目录
@@ -188,58 +181,9 @@ sudo ./setup.sh
 | **仪表盘** | 实时监控 CPU、内存、网络等系统状态，可视化图表展示 |
 | **群组管理** | 分群配置：启用/禁用群组、链接冷却、标签开关、深色模式、黑名单、管理员、关注同步、视频下载（继承/覆盖） |
 | **全局设置** | 常规配置（轮询间隔等）、全局黑名单、B站登录、视频下载全局策略、应用重启 |
-| **Agent 设置** | 新 Agent 的全局开关、Persona、LLM 引用、预算、工具策略和群级覆盖 |
-| **Agent 决策** | 查看 Agent 的 timing、LLM decision、policy、工具确认/执行、发送结果、重入调度和筛选统计 |
-| **Agent 记忆** | 查看长期记忆、人物画像、表达习惯和回复效果；长期记忆支持筛选、删除和清理 |
 | **实时日志** | WebSocket 实时推送应用日志，支持暂停/清空 |
 
 > 说明：WebUI 仅管理真实群聊标识：NapCat 使用数字群号，QQ Official 使用安全的 `group_openid`；不支持私聊会话（`private_*`）管理。
-
-</details>
-
-## Agent 功能
-
-<details>
-<summary><b>展开查看 Agent 说明</b></summary>
-
-Agent 是当前分支的新智能入口，目标是“群聊观察者 + 谨慎参与者 + 受限业务操作者”，不是收到消息就回复的聊天机器人。
-
-### 处理边界
-
-| 消息/事件 | 处理方式 |
-| :--- | :--- |
-| `/` 开头的显式指令 | 不进 LLM，直接走命令系统 |
-| B 站链接、短链、小程序分享 | 不进 LLM，直接走链接解析链路 |
-| 黑名单、群禁用、Agent 未启用 | 硬拒绝，不进入 Agent |
-| 普通自然语言 | 进入 Agent，由 LLM 判断回复、沉默、延迟或工具计划 |
-| @Bot、回复 Bot、叫昵称 | 高相关消息，原则上应由 Agent 认真回应 |
-| 配置、订阅、群管理意图 | LLM 只能输出 `tool_plan`，实际执行由权限和确认系统决定 |
-
-### 权限模型
-
-| 权限来源 | 能力范围 |
-| :--- | :--- |
-| 普通群成员 | 聊天、查询、提出请求 |
-| 配置群管理员 | 管理本群 Bot/Agent 配置和订阅 |
-| QQ 群管理员/群主 | 基于 QQ 权限管理本群配置和群聊操作 |
-| YAML Root 管理员 | NapCat 使用 `admin.rootQQ`；QQ Official 使用 `qq.official.rootOpenids` |
-
-> QQ Official 模式使用 `openid/member_openid/group_openid`，Root 管理员配置在 `config/config.yaml` 的 `qq.official.rootOpenids`；不要把数字 QQ 号和官方 openid 混用。
-
-### 工具和确认
-
-- Agent 只能调用白名单工具，不能执行 shell、不能任意读写文件、不能动态接入 MCP。
-- 中高风险工具会进入短码确认流程；确认必须来自同群同用户，并携带短码或明确回复 Bot。
-- 高风险工具不可通过 WebUI 配置关闭确认。
-- QQ 群管理工具会检查用户权限和 Bot 当前 QQ 群权限。
-- 浏览器能力包括 `browser.read_url`、`browser.search_web` 和 `browser.screenshot_url`；拒绝 localhost、内网地址、带凭证 URL 和 DNS 解析到内网的地址。
-- QQ 管理工具包括群信息查询、成员查询、禁言/解禁、踢人、撤回、精华、全员禁言、加群申请、好友申请、在线状态和输入状态；写操作受 QQ 权限、Bot 权限、风险确认和审计日志约束。
-
-### 验证方式
-
-- 在 WebUI 的 **Agent 决策** 页查看每条消息的 timing、LLM 决策、policy、工具计划、确认、重入调度和发送结果。
-- 在 **Agent 记忆** 页查看长期记忆、人物画像、表达习惯和回复效果；长期记忆可继续删除或按筛选清理。
-- QQ 群实测建议参考 `docs/done/2026-04-26-agent-qq-test-matrix.md`。
 
 </details>
 
@@ -258,7 +202,7 @@ node src/cli/config.js status --manifest data/migrations/config-manifest.json
 node src/cli/config.js deployment-plan --config config/config.yaml --output data/config-state/deployment-plan.json
 ```
 
-YAML 使用 versioned schema（当前 `version: 1`），主要分区包括 `qq`、`dashboard`、`deployment`、`paths`、`pythonService`、`cache`、`subscription`、`rendering`、`videoDownload`、`logging`、`groupConfigs` 和 `agent`。Secret（NapCat token、Official client secret、Dashboard password/JWT、Agent API key）均写入 YAML，文件/目录权限为 `0600/0700`；Dashboard 和 API 只返回 configured marker。
+YAML 使用 versioned schema（当前 `version: 1`），主要分区包括 `qq`、`dashboard`、`deployment`、`paths`、`pythonService`、`cache`、`subscription`、`rendering`、`videoDownload`、`logging` 和 `groupConfigs`。Secret（NapCat token、Official client secret、Dashboard password/JWT）均写入 YAML，文件/目录权限为 `0600/0700`；Dashboard 和 API 只返回 configured marker。旧版本文档中的 `agent` 分区已被移除：现有 `config.yaml` 里遗留的 `agent` 段仍合法但完全被忽略，可在方便时手动删除。
 
 手工编辑合法 YAML 后，ConfigService 会按 diff 自动即时应用或重建对应子系统：日志/缓存/订阅 timer、Python、Dashboard listener、浏览器、下载路径以及 NapCat/Official Provider 都无需手工重启整个 Bot。非法 YAML、重复 key、危险对象路径或未知字段会被拒绝，运行实例继续使用 last-good snapshot。宿主机端口、volume 和 Docker 网络属于 Compose 配置，需要手工调整安装目录中的 `.env` 或 `docker-compose.yml` 后重建容器。
 
@@ -270,33 +214,6 @@ Dashboard/API 更新必须携带 `expectedGeneration`。响应会区分 `applied
 - Provider 配置和 `paths.napcatTemp` 热更新会受控重建连接；candidate 在 commit 前不接收业务入口，失败时恢复旧 generation。
 - Official ID store、reply/recall mapping 与 per-target `msg_seq` 使用共享 COW 状态，失败 candidate 不写正式文件。
 - 富媒体公网临时地址配置为 `qq.official.tempPublicBaseUrl`，内置只读路径仍为 `/qq-official-temp/`。
-
-### Agent 开启建议
-
-Agent 默认关闭。一键部署不会自动让 Agent 在群里发言；建议按阶段开启：
-
-1. WebUI 或 YAML 设置 `agent.enabled=true`、目标群 `agent.groups.<群ID>.enabled=true`。
-2. 先保持 `agent.observeOnly=true`、`agent.sendEnabled=false`，在 Agent 决策页观察 LLM 判断。
-3. 确认效果后切到 `decisionMode=llm_live`，再开启 `sendEnabled=true`。
-4. 需要自然语言管理订阅、配置或 QQ 群时，再开启 `agent.tools.enabled=true`。
-5. 中高风险工具保留确认，尤其是禁言、踢人、撤回、关闭 Bot、处理申请等操作。
-6. 如需偶尔插话，在 Agent 设置中开启 `agent.social.enabled=true`，并逐步调高插话概率和每日上限。
-
-
-### Agent 实测建议
-
-开启 Agent 后，建议在 QQ 群中按风险从低到高验证：
-
-| 场景 | 示例 | 预期 |
-| :--- | :--- | :--- |
-| 自然语言 | `@Bot 你现在能做什么？` | Agent 正常回复，WebUI Agent 决策可见轨迹 |
-| 网页读取 | `@Bot 总结 https://example.com` | 调用 `browser.read_url` 并给出摘要 |
-| 网页搜索 | `@Bot 搜一下 B 站最新动态` | 调用 `browser.search_web`，返回搜索摘要 |
-| 网页截图 | `@Bot 截图 https://example.com` | 调用 `browser.screenshot_url` 并发送截图；风控页返回受限提示 |
-| 记忆 | `@Bot 记住我喜欢简短回答` | 写入长期记忆，WebUI Agent 记忆可见 |
-| QQ 管理 | `@Bot 禁言 @某人 1分钟` | 校验用户权限和 Bot 群管权限，中高风险要求确认 |
-| 申请处理 | `@Bot 查看加群申请` / `同意第一个申请` | 读取/处理申请，写操作按风险确认 |
-| 偶尔插话 | 群内持续闲聊 | 社交模式开启后，Agent 在预算和冷却内低频插话 |
 
 ## 开发与测试
 
@@ -333,7 +250,6 @@ bili-qq-bot/
 │   ├── tools/              # 可复用本地验证工具，例如 Preview Lab
 │   ├── fixtures/           # 稳定测试夹具
 │   ├── unit/               # 按领域分类的单元测试
-│   │   ├── agent/
 │   │   ├── bilibili/
 │   │   ├── commands/
 │   │   ├── config/

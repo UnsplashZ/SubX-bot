@@ -3,7 +3,6 @@ const notificationService = require('../services/notificationService');
 const config = require('../config');
 const linkService = require('../services/link');
 const commandManager = require('../commands');
-const { agentIngress } = require('../agent');
 const imageGenerator = require('../services/imageGenerator'); // Used in handleGroupIncrease
 const requestApprovalService = require('../services/requestApprovalService');
 const { CAPABILITIES, hasCapability } = require('../providers/qq/capabilities');
@@ -365,23 +364,6 @@ class MessageHandler {
             }
 
             return
-        }
-
-        try {
-            await agentIngress.observe({
-                ws,
-                groupId,
-                userId,
-                rawMessage,
-                messageData,
-                traceContext
-            })
-        } catch (error) {
-            logger.logEvent('warn', 'AGENT', traceContext.scope, 'observe-failed', {
-                groupId,
-                userId,
-                error: logger.getErrorMessage(error)
-            })
         }
     }
 

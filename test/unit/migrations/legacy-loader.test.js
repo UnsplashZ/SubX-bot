@@ -7,8 +7,7 @@ const os = require('os')
 const path = require('path')
 const {
     resolveLegacyConfig,
-    createDefaultV1Config,
-    resolveAgent
+    createDefaultV1Config
 } = require('../../../src/migrations/config/legacyLoader')
 const {
     parseConfigYaml,
@@ -32,58 +31,7 @@ function copyFixture(name) {
 }
 
 describe('legacy config resolver', () => {
-    it('freezes the complete legacy Agent normalizer before applying env overrides', () => {
-        const normalized = resolveAgent({
-            enabled: 'false',
-            observeOnly: 0,
-            decisionMode: 'future-mode',
-            aliases: [' bot ', '', 42],
-            persona: { displayName: `  ${'x'.repeat(100)}  `, style: '', boundaries: '' },
-            shortTerm: { maxRecentMessagesPerGroup: 1, promptMaxMessages: 999 },
-            replyPolicy: { minReplyScore: 9, cooldownMs: -1 },
-            social: { mode: 'invalid', interjectProbability: -1, maxCasualReplyChars: 9999 },
-            tools: { confirmationTtlMs: 1, requireConfirmationFor: ['low', 'low', 'invalid'] },
-            llm: { enabled: false, provider: '', baseURL: ' http://legacy.example ', apiKeyEnv: 'CUSTOM_KEY', timeoutMs: 1, temperature: 9, maxTokens: 1 },
-            budget: { enabled: true, windowMs: 1, maxLlmCallsPerGroupPerMinute: 0, maxLlmCallsPerUserPerMinute: 0 }
-        }, {
-            AGENT_LLM_ENABLED: 'true',
-            AGENT_LLM_PROVIDER: 'runtime-provider',
-            AGENT_LLM_TIMEOUT_MS: '500',
-            AGENT_LLM_TEMPERATURE: '-2',
-            AGENT_LLM_MAX_TOKENS: '25',
-            CUSTOM_KEY: ' runtime-secret ',
-            AGENT_BUDGET_ENABLED: 'false'
-        })
-        assert.strictEqual(normalized.enabled, true)
-        assert.strictEqual(normalized.observeOnly, true)
-        assert.strictEqual(normalized.decisionMode, 'rule_only')
-        assert.deepStrictEqual(normalized.aliases, ['bot', '42'])
-        assert.strictEqual(normalized.persona.displayName.length, 80)
-        assert.strictEqual(normalized.shortTerm.maxRecentMessagesPerGroup, 10)
-        assert.strictEqual(normalized.shortTerm.promptMaxMessages, 120)
-        assert.strictEqual(normalized.replyPolicy.minReplyScore, 1)
-        assert.strictEqual(normalized.replyPolicy.cooldownMs, 0)
-        assert.strictEqual(normalized.social.mode, 'quiet')
-        assert.strictEqual(normalized.social.interjectProbability, 0)
-        assert.strictEqual(normalized.social.maxCasualReplyChars, 500)
-        assert.deepStrictEqual(normalized.tools.requireConfirmationFor, ['low', 'high'])
-        assert.strictEqual(normalized.tools.confirmationTtlMs, 10000)
-        assert.strictEqual(normalized.llm.enabled, true)
-        assert.strictEqual(normalized.llm.provider, 'runtime-provider')
-        assert.strictEqual(normalized.llm.baseUrl, 'http://legacy.example')
-        assert.strictEqual(normalized.llm.apiKey, 'runtime-secret')
-        assert.strictEqual(normalized.llm.timeoutMs, 1000)
-        assert.strictEqual(normalized.llm.temperature, 0)
-        assert.strictEqual(normalized.llm.maxTokens, 100)
-        assert.ok(!Object.prototype.hasOwnProperty.call(normalized.llm, 'apiKeyEnv'))
-        assert.ok(!Object.prototype.hasOwnProperty.call(normalized.llm, 'baseURL'))
-        assert.strictEqual(normalized.budget.enabled, false)
-        assert.strictEqual(normalized.budget.windowMs, 1000)
-        assert.strictEqual(normalized.budget.maxLlmCallsPerGroupPerMinute, 1)
-        assert.strictEqual(normalized.budget.maxLlmCallsPerUserPerMinute, 1)
-    })
-
-    it('replays field-level priority and dynamic Agent secret resolution', () => {
+    it('replays field-level priority and drops removed Agent settings with a warning', () => {
         const fixture = copyFixture('conflict-priority')
         try {
             const result = resolveLegacyConfig({
@@ -104,8 +52,9 @@ describe('legacy config resolver', () => {
             assert.strictEqual(result.config.admin.rootQQ, '20002')
             assert.strictEqual(result.config.paths.python, '/config-json/python')
             assert.strictEqual(result.config.pythonService.port, 12001)
-            assert.strictEqual(result.config.agent.llm.provider, 'runtime-agent-provider')
-            assert.strictEqual(result.config.agent.llm.apiKey, 'runtime-agent-secret')
+            // Agent 已移除：遗留 agent 配置与 AGENT_* 环境变量被丢弃并告警
+            assert.ok(!Object.prototype.hasOwnProperty.call(result.config, 'agent'))
+            assert.ok(result.warnings.some((warning) => warning.code === 'LEGACY_AGENT_CONFIG_DROPPED'))
             assert.deepStrictEqual(result.config.groupConfigs['12345'].admins, ['90001'])
             assert.strictEqual(
                 result.config.compat.unmappedLegacy.groupConfigs['12345'].futureLegacyFlag,

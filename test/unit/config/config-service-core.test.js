@@ -106,8 +106,11 @@ describe('ConfigService core', () => {
                 blacklistedQQs: ['user_openid:blocked-1']
             }
         }
-        valid.agent.groups = {
-            'group_openid:abc_DEF-123': { enabled: true }
+        // `agent` is a legacy tombstone: leftover sections from older
+        // documents stay valid but are ignored at runtime.
+        valid.agent = {
+            groups: { 'group_openid:abc_DEF-123': { enabled: true } },
+            llm: { apiKey: 'leftover-secret' }
         }
         valid.qq.official.rootOpenids = ['user_openid:root_1']
         assert.doesNotThrow(() => validateConfig(valid))
@@ -161,15 +164,12 @@ describe('ConfigService core', () => {
             'MESSAGE_DEDUP_TTL_MS',
             'AI_MESSAGE_DEDUP_MAX_ENTRIES',
             'LOG_LEVEL',
-            'LOG_BUFFER_SIZE',
-            'AGENT_LLM_BASE_URL',
-            'AGENT_LLM_MODEL',
-            'AGENT_BUDGET_ENABLED'
+            'LOG_BUFFER_SIZE'
         ].forEach((key) => assert.ok(LEGACY_ENV_TO_PATH[key], `missing legacy env mapping for ${key}`))
-        const apiKey = inventoryByPath.get('agent.llm.apiKey')
-        assert.strictEqual(apiKey.secret, true)
-        assert.strictEqual(apiKey.publicShape, 'configured-marker')
-        assert.strictEqual(apiKey.legacyResolver, 'dynamic-api-key-env')
+        assert.ok(!('AGENT_LLM_BASE_URL' in LEGACY_ENV_TO_PATH), 'removed agent envs must not be mapped')
+        const agentTombstone = inventoryByPath.get('agent')
+        assert.strictEqual(agentTombstone.secret, true)
+        assert.strictEqual(agentTombstone.publicShape, 'configured-marker')
     })
 
     it('creates one private config.yaml and a private last-good outside config/', async () => {
@@ -283,13 +283,15 @@ describe('ConfigService core', () => {
             await fixture.service.patch([
                 { op: 'set', path: ['qq', 'napcat', 'wsToken'], value: 'napcat-secret' },
                 { op: 'set', path: ['qq', 'official', 'clientSecret'], value: 'official-secret' },
-                { op: 'set', path: ['agent', 'llm', 'apiKey'], value: 'agent-secret' }
+                // `agent` is a legacy tombstone: any leftover section stays
+                // secret and is never projected publicly.
+                { op: 'set', path: ['agent'], value: { llm: { apiKey: 'agent-secret' } } }
             ], { expectedGeneration: 1 })
 
             const publicConfig = fixture.service.getPublicSnapshot()
             assert.deepStrictEqual(publicConfig.qq.napcat.wsToken, { configured: true })
             assert.deepStrictEqual(publicConfig.qq.official.clientSecret, { configured: true })
-            assert.deepStrictEqual(publicConfig.agent.llm.apiKey, { configured: true })
+            assert.deepStrictEqual(publicConfig.agent, { configured: true })
             const serialized = JSON.stringify({ publicConfig, status: fixture.service.getStatus() })
             assert.ok(!serialized.includes('napcat-secret'))
             assert.ok(!serialized.includes('official-secret'))

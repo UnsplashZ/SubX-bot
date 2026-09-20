@@ -9,7 +9,6 @@ const { validateConfig } = require('../../config/validator')
 const { readPrivateFile, readPrivateText } = require('../common/privateFile')
 const { MigrationError } = require('../common/errors')
 const { parseConfigYaml, validateConfigObject } = require('./configDocument')
-const { normalizeFrozenLegacyAgent } = require('./frozenLegacyAgent')
 
 const LEGACY_FILES = {
     dotenv: '.env',
@@ -62,8 +61,7 @@ const FLAT_TO_YAML_PATH = {
     providerScopedEnabledGroups: 'providerScopedEnabledGroups',
     nightMode: 'rendering.nightMode',
     labelConfig: 'rendering.labels',
-    groupConfigs: 'groupConfigs',
-    agent: 'agent'
+    groupConfigs: 'groupConfigs'
 }
 
 const KNOWN_GROUP_KEYS = new Set([
@@ -295,10 +293,6 @@ function resolveLegacyLogStacks(value) {
     return 'never'
 }
 
-function resolveAgent(rawAgent, env) {
-    return normalizeFrozenLegacyAgent(rawAgent, env)
-}
-
 function splitGroupConfigs(rawGroupConfigs, warnings) {
     if (!isPlainObject(rawGroupConfigs)) throw new MigrationError('LEGACY_EFFECTIVE_CONFIG_UNREPRESENTABLE')
     const groupConfigs = {}
@@ -340,7 +334,9 @@ function resolveOrdinaryFlat(overrides, env, warnings, options = {}) {
     flat.pythonPath = hasOwn(overrides, 'pythonPath')
         ? clone(overrides.pythonPath)
         : String(env.PYTHON_PATH || options.detectedPythonPath || META.pythonPath.def)
-    flat.agent = resolveAgent(hasOwn(overrides, 'agent') ? overrides.agent : undefined, env)
+    if (hasOwn(overrides, 'agent') || Object.keys(env).some((key) => key.startsWith('AGENT_'))) {
+        warnings.push({ code: 'LEGACY_AGENT_CONFIG_DROPPED', path: 'agent' })
+    }
     if (hasOwn(overrides, 'previewLayoutConfig')) {
         flat.previewLayoutConfig = isPlainObject(overrides.previewLayoutConfig) ? clone(overrides.previewLayoutConfig) : {}
     }
@@ -540,6 +536,5 @@ module.exports = {
     createDefaultV1Config,
     splitGroupConfigs,
     setPath,
-    resolveAgent,
     resolveLegacyJwtSecret
 }

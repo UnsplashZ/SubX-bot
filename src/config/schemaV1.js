@@ -130,127 +130,6 @@ const groupConfigSchema = objectNode({
     videoDownloadMaxDuration: integerNode(600, { minimum: 0 })
 }, { partial: true })
 
-const agentDefaults = {
-    enabled: false,
-    observeOnly: true,
-    logTrajectory: true,
-    defaultGroupEnabled: false,
-    decisionMode: 'rule_only',
-    sendEnabled: false,
-    aliases: [],
-    persona: {
-        displayName: '群聊 Bot',
-        style: '像有分寸的群友一样自然接话；短、口语化、有观点但不抢话。',
-        boundaries: 'Bilibili 是主要能力之一，但不是唯一职责。'
-    },
-    shortTerm: {
-        maxRecentMessagesPerGroup: 100,
-        topicIdleMs: 1800000,
-        crowdedMessagesPerMinute: 8,
-        promptRecentMessages: 16,
-        promptTopicMessages: 20,
-        promptAssistantMessages: 6,
-        promptMaxMessages: 32,
-        promptMaxCharsPerMessage: 220,
-        promptMaxContextChars: 6000
-    },
-    longTerm: {
-        retrieveLimit: 5,
-        topicSummaryEnabled: true,
-        topicSummaryMinMessages: 6,
-        topicSummaryMinIntervalMs: 600000
-    },
-    replyPolicy: { minReplyScore: 0.65, cooldownMs: 5000 },
-    participation: {
-        enabled: true,
-        timingGateEnabled: true,
-        replyerEnabled: true,
-        expressionLearningEnabled: false,
-        replyEffectTrackingEnabled: false,
-        personProfileEnabled: true
-    },
-    replyer: { maxReactChars: 60, maxReplyChars: 500, allowQuoteReply: true },
-    expression: { learningMinMessages: 20, learningMinIntervalMs: 600000 },
-    timing: { quietWindowMs: 2500, maxWaitMs: 12000 },
-    social: {
-        enabled: false,
-        mode: 'quiet',
-        interjectProbability: 0.18,
-        ambientReactProbability: 0.08,
-        planningMinScore: 0.3,
-        topicAffinityMinScore: 0.8,
-        minInterjectScore: 0.72,
-        minAmbientScore: 0.62,
-        cooldownMs: 90000,
-        dailyInterjectLimit: 30,
-        perTopicInterjectLimit: 2,
-        avoidDuringRapidTwoPersonChat: true,
-        maxCasualReplyChars: 120
-    },
-    tools: { enabled: false, confirmationTtlMs: 60000, requireConfirmationFor: ['medium', 'high'] },
-    llm: {
-        enabled: false,
-        provider: 'openai-compatible',
-        baseUrl: '',
-        model: '',
-        apiKey: '',
-        timeoutMs: 12000,
-        temperature: 0.2,
-        maxTokens: 500
-    },
-    budget: {
-        enabled: true,
-        windowMs: 60000,
-        maxLlmCallsPerGroupPerMinute: 60,
-        maxLlmCallsPerUserPerMinute: 20
-    }
-}
-
-const DEFAULT_AGENT_CONFIG = deepFreezeCopy(agentDefaults)
-
-function deepFreezeCopy(value) {
-    if (!value || typeof value !== 'object') return value
-    const copy = Array.isArray(value)
-        ? value.map(deepFreezeCopy)
-        : Object.fromEntries(Object.entries(value).map(([key, child]) => [key, deepFreezeCopy(child)]))
-    return Object.freeze(copy)
-}
-
-function schemaFromDefault(value, options = {}) {
-    if (typeof value === 'boolean') return booleanNode(value, options)
-    if (typeof value === 'number') {
-        return Number.isInteger(value) ? integerNode(value, options) : numberNode(value, options)
-    }
-    if (typeof value === 'string') return stringNode(value, options)
-    if (Array.isArray(value)) {
-        const sample = value[0]
-        return arrayNode(sample === undefined ? stringNode('') : schemaFromDefault(sample), value, options)
-    }
-    if (value && typeof value === 'object') {
-        const properties = {}
-        for (const [key, child] of Object.entries(value)) {
-            properties[key] = schemaFromDefault(child)
-        }
-        return objectNode(properties, { ...options, default: value })
-    }
-    return { type: 'unknown', default: value, ...options }
-}
-
-const agentProperties = schemaFromDefault(agentDefaults).properties
-agentProperties.llm.properties.apiKey.secret = true
-agentProperties.llm.properties.apiKey.effects = ['agent']
-agentProperties.groups = mapNode(objectNode({
-    enabled: booleanNode(false),
-    observeOnly: booleanNode(true),
-    sendEnabled: booleanNode(false),
-    replyPolicy: agentProperties.replyPolicy,
-    social: agentProperties.social,
-    participation: agentProperties.participation,
-    timing: agentProperties.timing,
-    replyer: agentProperties.replyer,
-    expression: agentProperties.expression
-}, { partial: true }), { keyPattern: SAFE_ENTITY_ID_PATTERN })
-
 const CONFIG_SCHEMA = objectNode({
     version: integerNode(CONFIG_SCHEMA_VERSION, { enum: [CONFIG_SCHEMA_VERSION] }),
     qq: objectNode({
@@ -367,7 +246,10 @@ const CONFIG_SCHEMA = objectNode({
     enabledGroups: arrayNode(stringNode('', { pattern: SAFE_ENTITY_ID_PATTERN }), [], { effects: ['subscription'] }),
     providerScopedEnabledGroups: mapNode(arrayNode(stringNode('', { pattern: SAFE_ENTITY_ID_PATTERN })), { effects: ['subscription'] }),
     groupConfigs: mapNode(groupConfigSchema, { keyPattern: SAFE_ENTITY_ID_PATTERN, effects: ['groups'] }),
-    agent: objectNode(agentProperties, { default: { ...agentDefaults, groups: {} }, effects: ['agent'] }),
+    // Legacy tombstone: the Agent subsystem was removed. Existing documents
+    // may still carry an `agent` section; accept and retain it (secret, never
+    // projected publicly) so they keep validating, but nothing consumes it.
+    agent: mapNode({ type: 'unknown', secret: true }, { secret: true, legacyTombstone: true }),
     compat: objectNode({
         unmappedLegacy: objectNode({
             groupConfigs: mapNode({ type: 'unknown', secret: true })
@@ -419,7 +301,6 @@ const FLAT_KEY_TO_PATH = Object.freeze({
     nightMode: ['rendering', 'nightMode'],
     labelConfig: ['rendering', 'labels'],
     groupConfigs: ['groupConfigs'],
-    agent: ['agent'],
     jwtSecret: ['dashboard', 'jwtSecret'],
     rootAdminQQ: ['admin', 'rootQQ']
 })
@@ -465,18 +346,7 @@ const LEGACY_ENV_TO_PATH = Object.freeze({
     LOG_TIMESTAMP: 'logging.timestamp',
     LOG_PRETTY: 'logging.pretty',
     LOG_STACKS: 'logging.stacks',
-    LOG_BUFFER_SIZE: 'logging.bufferSize',
-    AGENT_LLM_ENABLED: 'agent.llm.enabled',
-    AGENT_LLM_PROVIDER: 'agent.llm.provider',
-    AGENT_LLM_BASE_URL: 'agent.llm.baseUrl',
-    AGENT_LLM_MODEL: 'agent.llm.model',
-    AGENT_LLM_TIMEOUT_MS: 'agent.llm.timeoutMs',
-    AGENT_LLM_TEMPERATURE: 'agent.llm.temperature',
-    AGENT_LLM_MAX_TOKENS: 'agent.llm.maxTokens',
-    AGENT_BUDGET_ENABLED: 'agent.budget.enabled',
-    AGENT_BUDGET_WINDOW_MS: 'agent.budget.windowMs',
-    AGENT_BUDGET_MAX_LLM_CALLS_PER_GROUP_PER_MINUTE: 'agent.budget.maxLlmCallsPerGroupPerMinute',
-    AGENT_BUDGET_MAX_LLM_CALLS_PER_USER_PER_MINUTE: 'agent.budget.maxLlmCallsPerUserPerMinute'
+    LOG_BUFFER_SIZE: 'logging.bufferSize'
 })
 
 function clone(value) {
@@ -484,9 +354,11 @@ function clone(value) {
 }
 
 function createDefaultFromSchema(node) {
+    if (node.legacyTombstone) return undefined
     if (node.type === 'object') {
         const value = {}
         for (const [key, child] of Object.entries(node.properties || {})) {
+            if (child && child.legacyTombstone) continue
             value[key] = createDefaultFromSchema(child)
         }
         return value
@@ -587,7 +459,7 @@ function buildInventory(node = CONFIG_SCHEMA, prefix = [], inherited = {}) {
             effects,
             deploymentApplyRequired: Boolean(node.deploymentApplyRequired),
             publicShape: secret ? 'configured-marker' : 'value',
-            legacyResolver: yamlPath === 'agent.llm.apiKey' ? 'dynamic-api-key-env' : 'field'
+            legacyResolver: 'field'
         }]
     }
     const yamlPath = prefix.join('.')
@@ -604,7 +476,7 @@ function buildInventory(node = CONFIG_SCHEMA, prefix = [], inherited = {}) {
         effects,
         deploymentApplyRequired: Boolean(node.deploymentApplyRequired),
         publicShape: secret ? 'configured-marker' : 'value',
-        legacyResolver: yamlPath === 'agent.llm.apiKey' ? 'dynamic-api-key-env' : 'field'
+        legacyResolver: 'field'
     }]
 }
 
@@ -620,7 +492,6 @@ module.exports = {
     LEGACY_ENV_TO_PATH,
     LABEL_KEYS,
     DEFAULT_LABEL_CONFIG,
-    DEFAULT_AGENT_CONFIG,
     AT_ALL_SOURCE_KEYS,
     AT_ALL_CATEGORY_KEYS,
     createDefaultConfig,

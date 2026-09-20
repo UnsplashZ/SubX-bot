@@ -24,9 +24,6 @@ let stateStore
 let deliveryStore
 let cacheManager
 let subscriptionUserMetaCache
-let longTermStore
-let expressionStore
-let personProfileStore
 try {
     // Construction-time process.cwd() defaults must resolve inside the same
     // isolated root; restore cwd immediately so test path semantics are intact.
@@ -36,9 +33,6 @@ try {
     deliveryStore = require('../../src/services/subscription/subscriptionDeliveryStore')
     cacheManager = require('../../src/utils/cacheManager')
     subscriptionUserMetaCache = require('../../src/services/subscriptionUserMetaCacheService')
-    longTermStore = require('../../src/agent/memory/longTermStore')
-    expressionStore = require('../../src/agent/expression/expressionStore')
-    personProfileStore = require('../../src/agent/memory/personProfileStore')
 } finally {
     process.chdir(originalCwd)
 }
@@ -66,10 +60,6 @@ cacheManager.initPromise = cacheManager.init()
 
 subscriptionUserMetaCache.cacheFile = isolatedPath('data', 'subscription_user_meta_cache.json')
 
-longTermStore.resetForTest(isolatedPath('data', 'agent', 'memory', 'memories.json'))
-expressionStore.resetForTest(isolatedPath('data', 'agent', 'expression', 'expressions.json'))
-personProfileStore.resetForTest(isolatedPath('data', 'agent', 'profile', 'person_profiles.json'))
-
 const officialIdStorePath = isolatedPath('data', 'qq-official-id-store.json')
 const cookiePath = isolatedPath('data', 'cookies.json')
 const cookieMapPath = isolatedPath('data', 'cookies_map.json')
@@ -85,9 +75,6 @@ global.__BILI_TEST_RUNTIME_ISOLATION__ = Object.freeze({
         delivery: deliveryStore.deliveryFile,
         cache: cacheManager.cacheDir,
         subscriptionUserMeta: subscriptionUserMetaCache.cacheFile,
-        longTermMemory: isolatedPath('data', 'agent', 'memory', 'memories.json'),
-        expressions: isolatedPath('data', 'agent', 'expression', 'expressions.json'),
-        personProfiles: isolatedPath('data', 'agent', 'profile', 'person_profiles.json'),
         officialIds: officialIdStorePath,
         cookies: cookiePath,
         cookieMap: cookieMapPath

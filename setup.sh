@@ -621,10 +621,6 @@ generate_config_yaml() {
     local dashboard_port="$6"
     local dashboard_password="$7"
     local allowed_origins="$8"
-    local agent_enabled="$9"
-    local agent_base_url="${10}"
-    local agent_model="${11}"
-    local agent_api_key="${12}"
 
     local provider='napcat'
     [ "$QQ_IMPLEMENTATION" != 'official' ] || provider='official'
@@ -638,10 +634,6 @@ generate_config_yaml() {
         -e SETUP_DASHBOARD_PORT="$dashboard_port" \
         -e SETUP_DASHBOARD_PASSWORD="$dashboard_password" \
         -e SETUP_ALLOWED_ORIGINS="$allowed_origins" \
-        -e SETUP_AGENT_ENABLED="$agent_enabled" \
-        -e SETUP_AGENT_BASE_URL="$agent_base_url" \
-        -e SETUP_AGENT_MODEL="$agent_model" \
-        -e SETUP_AGENT_API_KEY="$agent_api_key" \
         -v "$install_dir:/install" \
         --entrypoint node \
         "$bot_image" -e '
@@ -657,12 +649,7 @@ const input = {
     dashboardPassword: process.env.SETUP_DASHBOARD_PASSWORD,
     env: {
         DASHBOARD_PORT: process.env.SETUP_DASHBOARD_PORT,
-        DASHBOARD_ALLOWED_ORIGINS: process.env.SETUP_ALLOWED_ORIGINS,
-        AGENT_LLM_ENABLED: process.env.SETUP_AGENT_ENABLED,
-        AGENT_LLM_PROVIDER: "openai-compatible",
-        AGENT_LLM_BASE_URL: process.env.SETUP_AGENT_BASE_URL,
-        AGENT_LLM_MODEL: process.env.SETUP_AGENT_MODEL,
-        AGENT_API_KEY: process.env.SETUP_AGENT_API_KEY
+        DASHBOARD_ALLOWED_ORIGINS: process.env.SETUP_ALLOWED_ORIGINS
     }
 }
 fs.writeFileSync("/tmp/setup-config-input.json", `${JSON.stringify(input)}\n`, { mode: 0o600 })
@@ -737,7 +724,6 @@ main() {
     local dashboard_password=''
     if [ ! -f "$config_file" ] || [[ "$overwrite_config" =~ ^[Yy]$ ]]; then
         local bot_qq ws_token ws_url admin_qq allowed_origins
-        local agent_enabled='false' agent_base_url='' agent_model='' agent_api_key=''
         bot_qq=''
         ws_url='ws://napcat:3001'
         ws_token=''
@@ -769,24 +755,13 @@ main() {
         dashboard_password=$(prompt_default "WebUI 面板密码" "admin")
         read -r -p "允许访问 WebUI 的公网 Origin (可留空): " allowed_origins
 
-        read -r -p "是否配置 Agent LLM？[y/N]: " configure_agent
-        if [[ "$configure_agent" =~ ^[Yy]$ ]]; then
-            agent_enabled='true'
-            agent_base_url=$(prompt_required "OpenAI-compatible Base URL")
-            agent_model=$(prompt_required "模型名称")
-            read -r -s -p "API Key: " agent_api_key
-            echo
-            [ -n "$agent_api_key" ] || die "API Key 不能为空。"
-        fi
-
         case "$QQ_IMPLEMENTATION" in
             napcat) write_napcat_config "$install_dir" "$bot_qq" "$ws_token" ;;
             llbot) write_llbot_config "$install_dir" "$bot_qq" "$ws_token" ;;
         esac
         generate_config_yaml \
             "$install_dir" "$bot_image" "$ws_url" "$ws_token" "$admin_qq" \
-            "$dashboard_port" "$dashboard_password" "$allowed_origins" \
-            "$agent_enabled" "$agent_base_url" "$agent_model" "$agent_api_key"
+            "$dashboard_port" "$dashboard_password" "$allowed_origins"
         info "已生成新版 config/config.yaml。"
     else
         warn "保留现有 config/config.yaml。"
