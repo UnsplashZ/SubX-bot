@@ -70,6 +70,29 @@ def read_revision(dir_fd, name):
         os.close(fd)
 
 
+NOREPLACE_FALLBACK_ERRNOS = {
+    errno.EINVAL,  # Docker Desktop Windows bind mounts (virtiofs/gRPC-FUSE/9p)
+    errno.ENOSYS,
+    getattr(errno, "EOPNOTSUPP", errno.EINVAL),
+    getattr(errno, "ENOTSUP", errno.EINVAL),
+    errno.EPERM,
+}
+
+
+def fallback_rename(dir_fd, source, destination):
+    # 文件系统不支持 renameat2(RENAME_NOREPLACE) 时的降级路径：
+    # 先用存在性检查尽力保留 no-clobber 语义（存在 TOCTOU 残余风险，共享盘上无法避免），
+    # 再退回普通 rename。其余安全检查（dir_fd 锚定、内容哈希、fsync、mode）均保留。
+    try:
+        os.stat(destination, dir_fd=dir_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    else:
+        raise OSError(errno.EEXIST, os.strerror(errno.EEXIST), source, destination)
+    sys.stderr.write("CONFIG_ATOMIC_NOREPLACE_FALLBACK\n")
+    os.rename(source, destination, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+
+
 def rename_noreplace(dir_fd, source, destination):
     libc = ctypes.CDLL(None, use_errno=True)
     if sys.platform.startswith("linux"):
@@ -82,6 +105,9 @@ def rename_noreplace(dir_fd, source, destination):
         fail("CONFIG_ATOMIC_NOREPLACE_UNSUPPORTED")
     if result != 0:
         value = ctypes.get_errno()
+        if value in NOREPLACE_FALLBACK_ERRNOS:
+            fallback_rename(dir_fd, source, destination)
+            return
         raise OSError(value, os.strerror(value), source, destination)
 
 
