@@ -3,7 +3,7 @@
 
 const assert = require('assert')
 const path = require('path')
-const { parseCliArgs } = require('../../../src/services/previewLab/cliOptions')
+const { parseCliArgs } = require('../../tools/preview-lab/cliOptions')
 
 function testParseCliArgsDefaults() {
     const parsed = parseCliArgs(['https://www.bilibili.com/read/cv45123193'])

@@ -1,4 +1,4 @@
-const linkServices = require('../link')
+const linkServices = require('../../../src/services/link')
 
 async function expandPreviewInput(input, deps = {}) {
     const services = deps.linkServices || linkServices

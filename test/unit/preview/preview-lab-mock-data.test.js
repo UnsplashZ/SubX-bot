@@ -5,7 +5,7 @@ const assert = require('assert')
 const {
     buildMockPreviewTarget,
     normalizeStructureOptions
-} = require('../../../src/services/previewLab/mockData')
+} = require('../../tools/preview-lab/mockData')
 
 function testDynamicStructureOptionsProduceExpectedModules() {
     const target = buildMockPreviewTarget('dynamic', {

@@ -5,7 +5,7 @@ const assert = require('assert')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { runPreviewDebugSession } = require('../../../src/services/previewLab/session')
+const { runPreviewDebugSession } = require('../../tools/preview-lab/session')
 
 function createTempDir() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'preview-lab-'))

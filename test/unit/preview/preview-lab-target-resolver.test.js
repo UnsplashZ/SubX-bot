@@ -4,7 +4,7 @@
 const assert = require('assert')
 
 const serviceManager = require('../../../src/services/ServiceManager')
-const { resolvePreviewTarget } = require('../../../src/services/previewLab/targetResolver')
+const { resolvePreviewTarget } = require('../../tools/preview-lab/targetResolver')
 
 const originals = {
     sendCommand: serviceManager.sendCommand

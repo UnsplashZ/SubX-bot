@@ -45,6 +45,13 @@ Thumbs.db
 .claude
 .trae
 
+# Local AI & Test Tooling (Not needed in image)
+.codegraph/
+.playwright-mcp/
+.playwright-cli/
+.pytest_cache/
+.superpowers/
+
 # Docker & Setup (Not needed in image)
 docker-compose.yml
 .dockerignore

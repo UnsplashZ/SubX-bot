@@ -7,7 +7,7 @@ const {
     DEFAULT_HOST,
     DEFAULT_PORT,
     startPreviewLabWebServer
-} = require('../../src/services/previewLab/webServer')
+} = require('./preview-lab/webServer')
 
 async function cleanupAndExit(server, code) {
     try {

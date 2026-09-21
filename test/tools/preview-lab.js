@@ -4,8 +4,8 @@
 const path = require('path')
 const serviceManager = require('../../src/services/ServiceManager')
 const imageGenerator = require('../../src/services/imageGenerator')
-const { parseCliArgs } = require('../../src/services/previewLab/cliOptions')
-const { runPreviewDebugSession } = require('../../src/services/previewLab/session')
+const { parseCliArgs } = require('./preview-lab/cliOptions')
+const { runPreviewDebugSession } = require('./preview-lab/session')
 
 function printHelp() {
     console.log(`用法:

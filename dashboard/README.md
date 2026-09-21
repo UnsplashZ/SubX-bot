@@ -2,7 +2,7 @@
 
 这是主 Bot 内置管理面板的前端工程，基于 React、Vite 和 Tailwind CSS。生产构建输出到 `dashboard/dist`，由主进程的 Express 服务托管。
 
-当前 WebUI 覆盖运行状态、群组、订阅、视频下载、日志、B 站登录、系统设置，以及新 Agent 的配置与记忆管理；旧 AI/MCP 配置入口已移除。
+当前 WebUI 覆盖运行状态、群组、订阅、视频下载、日志、B 站登录与系统设置；旧 AI/MCP 与 Agent 配置入口已随 Agent 子系统移除。
 
 ## 开发
 
@@ -32,10 +32,7 @@ npm run build
 
 - `src/pages/Dashboard.jsx`：运行状态与资源概览
 - `src/pages/Groups.jsx`：群组配置、订阅与视频下载策略
-- `src/pages/Settings.jsx`：全局配置、B 站登录与视频下载策略
-- `src/pages/AgentSettings.jsx`：新 Agent 运行模式、LLM、预算、工具和群级覆盖配置
-- `src/pages/AgentDecisions.jsx`：新 Agent 决策轨迹、LLM 判断、发送策略和执行结果观测
-- `src/pages/AgentMemory.jsx`：新 Agent 长期记忆查看、筛选和清理
+- `src/pages/Settings.jsx`：全局配置、QQ Provider、B 站登录、黑名单与视频下载策略
 - `src/pages/Logs.jsx`：实时日志与历史缓冲
 - `src/pages/Login.jsx`：管理面板登录
 

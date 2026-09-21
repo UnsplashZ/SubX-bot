@@ -8,7 +8,7 @@ const {
     supportsDynamicOptions,
     supportsSeasonType,
     getVisibilityState
-} = require('../../../src/services/previewLab/web/uiState')
+} = require('../../tools/preview-lab/web/uiState')
 
 function testStructureTypeOptionsIncludeSupportedEntries() {
     const values = STRUCTURE_TYPE_OPTIONS.map((item) => item.value)

@@ -2,7 +2,7 @@
 'use strict'
 
 const assert = require('assert')
-const { resolvePreviewInput } = require('../../../src/services/previewLab/inputResolver')
+const { resolvePreviewInput } = require('../../tools/preview-lab/inputResolver')
 
 async function testResolvePreviewInputRecognizesSupportedLinkTypes() {
     const cases = [

@@ -1,4 +1,4 @@
-const serviceManager = require('../ServiceManager')
+const serviceManager = require('../../../src/services/ServiceManager')
 
 const previewCache = new Map()
 

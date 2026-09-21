@@ -2,7 +2,7 @@
 'use strict'
 
 const assert = require('assert')
-const { buildMockPreviewTarget } = require('../../../src/services/previewLab/mockData')
+const { buildMockPreviewTarget } = require('../../tools/preview-lab/mockData')
 const { getDefaultTemplate } = require('../../../src/services/previewTemplate/defaults')
 const { generatePreviewCard, generatePreviewCardArtifacts } = require('../../../src/services/imageGenerator/generators/previewCard')
 const imageGenerator = require('../../../src/services/imageGenerator')

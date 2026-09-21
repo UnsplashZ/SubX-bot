@@ -6,7 +6,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const request = require('supertest')
-const { createPreviewLabWebApp, isAllowedOutputFile } = require('../../../src/services/previewLab/webServer')
+const { createPreviewLabWebApp, isAllowedOutputFile } = require('../../tools/preview-lab/webServer')
 
 function createTempDir() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'preview-lab-web-'))

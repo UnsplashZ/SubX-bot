@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bili QQ Bot is a Node.js + Python hybrid application that connects QQ groups to Bilibili content via NapCat (OneBot v11 protocol). It parses Bilibili URLs, generates preview cards using Puppeteer, and supports subscription monitoring.
+SubX Bot (formerly Bili QQ Bot) is a Node.js + Python hybrid application that connects QQ groups to Bilibili content via an OneBot v11-compatible service (LLBot by default; NapCat and other OneBot services are also supported) or the QQ Official bot OpenAPI provider. It parses Bilibili URLs, generates preview cards using Puppeteer, and supports subscription monitoring.
 
 **Tech Stack:** Node.js 22.12+, Python 3.10+, Express 5, WebSocket, Puppeteer, bilibili-api-python 17.4.2
 
@@ -24,7 +24,6 @@ SubX-bot/
 │   │   ├── imageGenerator/  # Preview card rendering and generation
 │   │   ├── previewLayout/   # Legacy patch-based layout overrides (data-layout-key); validation/migration/fallback path
 │   │   ├── previewTemplate/ # Authoritative template-based layout engine (data-template-node-id); applied at render time (the /preview-layout dashboard editor was removed)
-│   │   ├── previewLab/      # Preview Lab service support
 │   │   └── subscription/    # Subscription service and update checker
 │   │       └── updateChecker/ # Feed, video, article, live checks
 │   ├── dashboard/          # Dashboard backend (Express)
@@ -38,7 +37,7 @@ SubX-bot/
 │   └── dist/               # Production build (served by bot)
 ├── test/                   # Test files and generated outputs
 │   ├── runners/            # Test runners
-│   ├── tools/              # Reusable local verification tools
+│   ├── tools/              # Reusable local verification tools (incl. preview-lab/ debug rendering helper)
 │   ├── unit/               # Categorized unit tests (*.test.js, *.test.mjs, *_test.py)
 │   │   ├── bilibili/       # Bilibili API/service contract tests
 │   │   ├── commands/       # Command behavior tests
@@ -66,7 +65,7 @@ SubX-bot/
 ├── config/                 # Configuration files
 ├── fonts/                  # Custom fonts for image rendering
 ├── logs/                   # Application logs
-└── napcat/                 # NapCat QQ client data
+└── onebot/                 # OneBot media shared volume (LLBot/NapCat mode)
 ```
 
 **Key Directories:**
@@ -84,7 +83,7 @@ SubX-bot/
 ### Starting the Application
 
 ```bash
-# Local development (requires NapCat running separately)
+# Local development (requires an OneBot-compatible QQ service such as LLBot or NapCat running separately)
 npm install
 python3 -m venv venv
 source venv/bin/activate
@@ -162,7 +161,7 @@ Follow existing code style:
 
 - Discover and migrate config and business data before runtime side effects
 - Initialize ConfigService and start its watcher after bootstrap succeeds
-- Establish and maintain the selected NapCat or QQ Official Provider
+- Establish and maintain the selected QQ Provider (OneBot-compatible such as LLBot/NapCat, or QQ Official)
 - Publish a new Provider generation only after candidate readiness and release checks
 - Fence stale sockets and keep in-flight work on the Provider generation whose lease it acquired
 - Reconfigure Python, Dashboard, browser, download, subscription, logging, and cache effects from config diffs
@@ -610,22 +609,22 @@ Examples:
 
 ### Multi-Container Setup
 
-`setup.sh` is a lightweight interactive NapCat deployment helper. It generates `config/config.yaml` through the Config CLI, prepares a release-matched embedded Compose template, pulls images, and starts `napcat` plus `bili-qq-bot`. It does not manage QQ Official deployments, upgrades, deployment transactions, or Compose ownership.
+`setup.sh` is a lightweight interactive deployment helper for the supported QQ access modes (LLBot by default; NapCat, an existing OneBot service, or QQ Official). It generates `config/config.yaml` through the Config CLI, prepares a release-matched embedded Compose template, pulls images, and starts `llbot` plus `bili-qq-bot` (or connects to the selected alternative). It does not manage QQ Official deployments, upgrades, deployment transactions, or Compose ownership.
 
 ### Volume Mounts
 
 ```yaml
 volumes:
-  - ./config:/app/config        # Configuration files
-  - ./data:/app/data            # Persistent data
-  - ./logs:/app/logs            # Application logs
-  - ./fonts:/app/fonts          # Custom fonts
-  - ./napcat/qq:/app/.config/QQ # NapCat data (QQ account)
+  - ./config:/app/config          # Configuration files
+  - ./data:/app/data              # Persistent data
+  - ./logs:/app/logs              # Application logs
+  - ./fonts/custom:/app/fonts/custom  # Custom fonts
+  - ./onebot/media:/app/.config/QQ/tmp  # OneBot media shared with LLBot/NapCat
 ```
 
-**Critical:** in NapCat mode, `paths.napcatTemp` and `paths.napcatRead` plus their Compose mounts must refer to the same shared content. The lightweight setup helper does not relocate mounts or rewrite existing application data.
+**Critical:** in OneBot-compatible mode (LLBot/NapCat), `paths.napcatTemp` and `paths.napcatRead` plus their Compose mounts must refer to the same shared content. The lightweight setup helper does not relocate mounts or rewrite existing application data.
 
-For an interactive NapCat deployment, run:
+For an interactive deployment, run:
 
 ```bash
 sudo ./setup.sh
@@ -764,12 +763,12 @@ if (!isRoot) {
 
 ### Private Chat Restriction
 
-Private-chat entry is limited to the root administrator configured by `admin.rootQQ` (NapCat) or `qq.official.rootOpenids` (QQ Official).
+Private-chat entry is limited to the root administrator configured by `admin.rootQQ` (OneBot/LLBot mode) or `qq.official.rootOpenids` (QQ Official).
 
 1. Private messages from non-root users are rejected immediately with the message indicating that the feature is admin-only.
 2. Root private chat can use link parsing and download features.
 3. Root private chat cannot use group-management features such as `/设置`, `/管理`, or subscription management commands (`/订阅*`, `/取消订阅*`, `/查询订阅`); those flows must be handled in the target group or through the Web UI.
-4. The Web UI group-management scope accepts numeric NapCat group IDs and schema-safe QQ Official opaque group IDs. Requests using `private_*` return `400 WebUI 不支持私聊会话管理`.
+4. The Web UI group-management scope accepts numeric OneBot group IDs and schema-safe QQ Official opaque group IDs. Requests using `private_*` return `400 WebUI 不支持私聊会话管理`.
 
 Group admins who are not root cannot use private-chat entry.
 

@@ -8,7 +8,7 @@ const { renderArticleContent } = require('../../../src/services/imageGenerator/r
 const { renderLiveContent } = require('../../../src/services/imageGenerator/renderers/live')
 const { renderBangumiContent } = require('../../../src/services/imageGenerator/renderers/bangumi')
 const { renderUserContent } = require('../../../src/services/imageGenerator/renderers/user')
-const { buildMockPreviewTarget } = require('../../../src/services/previewLab/mockData')
+const { buildMockPreviewTarget } = require('../../tools/preview-lab/mockData')
 
 function assertLayoutKeys(html, keys) {
     for (const key of keys) {

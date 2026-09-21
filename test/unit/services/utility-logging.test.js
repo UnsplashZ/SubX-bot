@@ -5,7 +5,6 @@ const assert = require('assert')
 
 const logger = require('../../../src/utils/logger')
 const { monitorRegex } = require('../../../src/utils/regexMonitor')
-const { getAxiosProxyConfig } = require('../../../src/utils/proxyUtils')
 const subscriptionService = require('../../../src/services/subscriptionService')
 const biliApi = require('../../../src/services/biliApi')
 const serviceManager = require('../../../src/services/ServiceManager')
@@ -24,8 +23,6 @@ async function run() {
             throw new Error('regex boom')
         }), /regex boom/)
 
-        assert.strictEqual(getAxiosProxyConfig('://broken'), false)
-
         subscriptionService.cookieFollowings = []
 
         serviceManager.process = {}
@@ -37,11 +34,9 @@ async function run() {
         assert.strictEqual(result.status, 'error')
 
         assert.ok(logs.some(line => line.includes('ERR STORE') && line.includes('[svc:regex]') && line.includes('regex-execution-failed') && line.includes('patternName=boom-pattern')))
-        assert.ok(logs.some(line => line.includes('WRN STORE') && line.includes('[svc:proxy]') && line.includes('proxy-url-invalid')))
         assert.ok(logs.some(line => line.includes('WRN SUB') && line.includes('[svc:subscription]') && line.includes('cookie-followings-setter-ignored')))
         assert.ok(logs.some(line => line.includes('ERR RPC') && line.includes('[svc:bili-api]') && line.includes('video-download-failed') && line.includes('bvid=BV1ZHiyBkExG')))
         assert.ok(!logs.some(line => line.includes('[RegexMonitor]')))
-        assert.ok(!logs.some(line => line.includes('[ProxyUtils]')))
         assert.ok(!logs.some(line => line.includes('[SubscriptionService]')))
         assert.ok(!logs.some(line => line.includes('[BiliApi]')))
         console.log('✓ utility/service 小模块会输出统一摘要日志')
