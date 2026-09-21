@@ -249,7 +249,7 @@ async function generateHelpCard(type = 'user', groupId) {
     `;
 
     let contentHtml = '';
-    let title = 'Bilibili Assistant';
+    let title = 'SubX Bot';
     let subtitle = '全能 B 站链接解析 & 订阅助手';
 
     if (type === 'user') {
@@ -421,7 +421,7 @@ async function generateHelpCard(type = 'user', groupId) {
 
                 <div class="footer" style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
                     <div style="font-size: 14px; opacity: 0.8; font-weight: normal;">输入指令（不带参数）即可获取指令帮助</div>
-                    <div style="font-size: 14px; font-weight: normal;">由 NapCat & Puppeteer 驱动</div>
+                    <div style="font-size: 14px; font-weight: normal;">Powered by SubX</div>
                 </div>
             </div>
         </div>
