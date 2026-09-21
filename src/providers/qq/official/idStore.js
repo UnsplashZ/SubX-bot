@@ -292,6 +292,18 @@ class OfficialIdStore {
         return key ? (this.members.get(key) || null) : null
     }
 
+    listGroupMembers(groupOpenId) {
+        const groupId = String(groupOpenId || '').trim()
+        if (!groupId) return []
+        const prefix = `${groupId}:`
+        const result = []
+        for (const [key, member] of this.members.entries()) {
+            if (!key.startsWith(prefix)) continue
+            result.push({ ...member })
+        }
+        return result
+    }
+
     markGroupMembership(groupOpenId, status) {
         return this.upsertGroup(groupOpenId, {
             reachable: status !== 'left',

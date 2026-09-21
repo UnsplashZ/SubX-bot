@@ -10,6 +10,43 @@ function commandLog(level, message, fields = {}) {
     logger.logEvent(level, 'BOT', 'cmd:settings', message, fields);
 }
 
+// 解析拉黑/解禁目标 ID：
+// 1. 显式参数（纯 QQ 号 / openid，或 CQ at 码 [CQ:at,qq=123] / 官方占位符 <@openid>、<@!openid>）
+// 2. NapCat/onebot11 消息 at 段（segment.data.qq，排除 @all）
+// 3. 官方 provider 的 mentions 数组（official.raw.mentions，排除 bot 自身）
+function parseAtToken(token) {
+    const value = String(token || '').trim();
+    if (!value) return '';
+    const cq = value.match(/^\[CQ:at,qq=(\d+)\]$/);
+    if (cq) return cq[1];
+    const official = value.match(/^<@!?([^>\s]+)>$/);
+    if (official) return official[1];
+    return value;
+}
+
+function resolveBlacklistTarget(argToken, messageData = {}) {
+    const selfId = String(messageData?.self_id || '').trim();
+    const isSelf = (id) => selfId && String(id) === selfId;
+    const fromToken = parseAtToken(argToken);
+    if (fromToken && !isSelf(fromToken)) return fromToken;
+
+    const segments = Array.isArray(messageData?.message) ? messageData.message : [];
+    for (const segment of segments) {
+        const qq = segment?.type === 'at' ? String(segment?.data?.qq || '') : '';
+        if (/^\d+$/.test(qq) && !isSelf(qq)) return qq;
+    }
+
+    const mentions = Array.isArray(messageData?.official?.raw?.mentions)
+        ? messageData.official.raw.mentions
+        : [];
+    for (const mention of mentions) {
+        const id = String(mention?.id || '').trim();
+        if (id && mention?.bot !== true && !isSelf(id)) return id;
+    }
+
+    return '';
+}
+
 function expectedGeneration() {
     return config.getStatus().documentGeneration;
 }
@@ -272,10 +309,10 @@ class SettingsCommand {
                 return true;
             }
 
-            // 5. 黑名单 (/设置 黑名单 <add|remove|list> [qq])
+            // 5. 黑名单 (/设置 黑名单 <add|remove|list> [qq|@目标])
             if (subCommand === '黑名单') {
                 let action = parts[2];
-                const targetQQ = parts[3];
+                const targetQQ = resolveBlacklistTarget(parts[3], context.messageData);
                 
                 // Map Chinese actions to English
                 if (action === '添加') action = 'add';
@@ -350,7 +387,7 @@ class SettingsCommand {
 
                     this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: msg } }]);
                 } else {
-                    this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: '使用方法: /设置 黑名单 <add|remove|list> [qq]' } }]);
+                    this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: '使用方法: /设置 黑名单 <add|remove|list> [QQ号|OpenID]，add/remove 也可直接 at 目标' } }]);
                 }
                 return true;
             }
@@ -615,3 +652,5 @@ class SettingsCommand {
 }
 
 module.exports = new SettingsCommand();
+module.exports._resolveBlacklistTarget = resolveBlacklistTarget;
+module.exports._parseAtToken = parseAtToken;

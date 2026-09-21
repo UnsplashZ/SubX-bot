@@ -3,6 +3,7 @@ const settingsCommand = require('./settings');
 const adminCommand = require('./admin');
 const helpCommand = require('./help');
 const downloadCommand = require('./download');
+const whoamiCommand = require('./whoami');
 const logger = require('../utils/logger');
 
 class CommandManager {
@@ -13,6 +14,7 @@ class CommandManager {
             adminCommand,
             helpCommand,
             downloadCommand,
+            whoamiCommand,
         ];
     }
 

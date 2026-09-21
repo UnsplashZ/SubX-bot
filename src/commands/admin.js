@@ -61,9 +61,43 @@ class AdminCommand {
                  });
 
                  let msg = '【Bot群组状态】\n群号 | 订阅 | 配置 | 黑名单\n';
-                 stats.forEach((val, key) => {
-                     msg += `${key} | ${val.hasSubs?'√':'x'} | ${val.hasConfig?'√':'x'} | ${val.hasBlacklist?'√':'x'}\n`;
-                 });
+
+                 // 官方 provider：尽量把 openid 解析成群名称，并补充群主/管理员信息
+                 let officialProvider = null;
+                 try {
+                     const runtime = require('../providers/qq/runtime');
+                     const provider = runtime.getCurrentProvider();
+                     if (provider && String(provider.id) === 'official' &&
+                         typeof provider.refreshGroupInfo === 'function') {
+                         officialProvider = provider;
+                     }
+                 } catch (e) {
+                     officialProvider = null;
+                 }
+
+                 for (const [key, val] of stats.entries()) {
+                     let displayId = key;
+                     let rosterLine = '';
+                     if (officialProvider) {
+                         try {
+                             await officialProvider.refreshGroupInfo(key);
+                             const displayName = officialProvider.resolveGroupDisplayName(key);
+                             if (displayName) displayId = `${displayName} (${key.slice(0, 8)}…)`;
+                             const roster = officialProvider.getGroupRoster(key);
+                             const rosterParts = [];
+                             if (roster.ownerNickname) rosterParts.push(`群主: ${roster.ownerNickname}`);
+                             if (roster.adminNicknames && roster.adminNicknames.length > 0) {
+                                 rosterParts.push(`管理员: ${roster.adminNicknames.slice(0, 5).join('、')}`);
+                             }
+                             rosterParts.push(`观测成员: ${roster.memberCount}`);
+                             if (rosterParts.length > 0) rosterLine = `   └ ${rosterParts.join(' · ')}`;
+                         } catch (e) {
+                             commandLog('warn', 'group-list-display-failed', { groupId: key, error: logger.getErrorMessage(e) });
+                         }
+                     }
+                     msg += `${displayId} | ${val.hasSubs?'√':'x'} | ${val.hasConfig?'√':'x'} | ${val.hasBlacklist?'√':'x'}\n`;
+                     if (rosterLine) msg += `${rosterLine}\n`;
+                 }
                  
                  if (stats.size === 0) msg += '(无记录)';
                  this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: msg } }]);

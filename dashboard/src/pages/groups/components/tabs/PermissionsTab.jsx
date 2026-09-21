@@ -36,7 +36,7 @@ const PermissionsTab = ({
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="输入 QQ 号..."
+              placeholder="输入 QQ 号或 OpenID..."
               value={adminInput}
               onChange={(e) => setAdminInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && onAddAdmin()}
@@ -85,7 +85,7 @@ const PermissionsTab = ({
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="输入 QQ 号码..."
+              placeholder="输入 QQ 号或 OpenID..."
               value={blacklistInput}
               onChange={(e) => setBlacklistInput(e.target.value)}
               className="flex-1 bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-red-500 focus:outline-none"

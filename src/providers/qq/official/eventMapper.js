@@ -2,26 +2,81 @@ function normalizeContent(content) {
     return String(content || '').replace(/\r\n/g, '\n')
 }
 
-function stripLeadingBotMention(content, selfId = '') {
+function stripLeadingBotMention(content, selfId = '', options = {}) {
     let text = normalizeContent(content)
     const original = text
     const escapedSelfId = String(selfId || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     if (escapedSelfId) {
-        text = text.replace(new RegExp(`^\\s*(?:<@!?${escapedSelfId}>|@${escapedSelfId})\\s*`, 'i'), '')
+        text = text.replace(new RegExp(`^[\\s\\u200B]*<@!?${escapedSelfId}>[\\s\\u200B]*`, 'i'), '')
+        if (text === original) {
+            text = text.replace(new RegExp(`^[\\s\\u200B]*@${escapedSelfId}[\\s\\u200B]+`, 'i'), '')
+        }
     }
-    text = text.replace(/^\s*(?:<@!?[^>]+>|@[^\s]+\s*)\s*/, '')
+    if (!options.onlySelf) {
+        text = text.replace(/^\s*(?:<@!?[^>]+>|@[^\s]+\s*)\s*/, '')
+    }
     return {
         content: text || original,
         mentionedSelf: text !== original
     }
 }
 
+function resolveMentionsBot(data = {}, selfId = '') {
+    const mentions = Array.isArray(data.mentions) ? data.mentions : []
+    return mentions.some((mention) =>
+        mention?.bot === true || (selfId && String(mention?.id || '') === String(selfId))
+    )
+}
+
+function stripLeadingMentionForIds(content, ids = []) {
+    let text = content
+    for (const id of ids) {
+        const escaped = String(id || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        if (!escaped) continue
+        const byTag = text.replace(new RegExp(`^[\\s\\u200B]*<@!?${escaped}>[\\s\\u200B]*`, 'i'), '')
+        if (byTag !== text) {
+            text = byTag
+            break
+        }
+        const byText = text.replace(new RegExp(`^[\\s\\u200B]*@${escaped}[\\s\\u200B]+`, 'i'), '')
+        if (byText !== text) {
+            text = byText
+            break
+        }
+    }
+    return text
+}
+
 function normalizeMessageContent(data = {}, eventType = '', selfId = '') {
     const content = normalizeContent(data.content)
-    if (eventType !== 'GROUP_AT_MESSAGE_CREATE') {
-        return { content, mentionedSelf: false }
+    if (eventType === 'GROUP_AT_MESSAGE_CREATE') {
+        return stripLeadingBotMention(content, selfId)
     }
-    return stripLeadingBotMention(content, selfId)
+    if (eventType === 'GROUP_MESSAGE_CREATE') {
+        // 全量模式下平台不保证去除@机器人前缀，且占位符用的是机器人的
+        // member_openid（<@openid> 无感叹号）而非 appid，需结合 mentions 数组判断：
+        // 只剥离 mentions 中 bot=true（或 id===selfId）条目对应的前缀，避免误剥他人
+        const mentions = Array.isArray(data.mentions) ? data.mentions : []
+        const mentionedSelf = resolveMentionsBot(data, selfId)
+        const botMentionIds = [...new Set([
+            ...mentions.filter((mention) => mention?.bot === true).map((mention) => String(mention?.id || '')),
+            String(selfId || '')
+        ].filter(Boolean))]
+        const stripped = stripLeadingMentionForIds(content, botMentionIds)
+        if (stripped !== content) {
+            return { content: stripped, mentionedSelf: true }
+        }
+        if (!mentionedSelf) {
+            return { content, mentionedSelf: false }
+        }
+        // mentions 表明 @ 了 bot，但 content 是 @昵称 文本格式：剥离去首个@ token
+        const withoutNickname = content.replace(/^@[^\s]+\s*/, '')
+        if (withoutNickname && withoutNickname !== content) {
+            return { content: withoutNickname, mentionedSelf: true }
+        }
+        return { content, mentionedSelf: true }
+    }
+    return { content, mentionedSelf: false }
 }
 
 function buildMessageSegments(data = {}, options = {}) {
@@ -108,6 +163,7 @@ function mapMessageEvent(event) {
             groupOpenId,
             memberOpenId,
             userOpenId,
+            mentionedSelf: normalizedContent.mentionedSelf || type === 'GROUP_AT_MESSAGE_CREATE',
             raw: data
         }
     }

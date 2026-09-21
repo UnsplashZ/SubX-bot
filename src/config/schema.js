@@ -159,6 +159,41 @@ const META = {
     qqOfficialGroupQpm: { env: 'QQ_OFFICIAL_GROUP_QPM', def: 20, type: 'int' },
     qqOfficialQueueMaxSize: { env: 'QQ_OFFICIAL_QUEUE_MAX_SIZE', def: 300, type: 'int' },
     qqOfficialGatewayAckTimeoutMs: { env: 'QQ_OFFICIAL_GATEWAY_ACK_TIMEOUT_MS', def: 90000, type: 'int' },
+    qqOfficialPanelSync: { env: 'QQ_OFFICIAL_PANEL_SYNC', def: true, type: 'bool' },
+    qqOfficialPanelItems: {
+        env: 'QQ_OFFICIAL_PANEL_ITEMS',
+        def: '',
+        type: 'array',
+        get: function(overrides) {
+            const raw = overrides.qqOfficialPanelItems !== undefined
+                ? overrides.qqOfficialPanelItems
+                : this.def
+            if (Array.isArray(raw)) return raw
+            try {
+                const parsed = JSON.parse(String(raw || '[]'))
+                return Array.isArray(parsed) ? parsed : []
+            } catch {
+                return []
+            }
+        }
+    },
+    qqOfficialGroupAliases: {
+        env: 'QQ_OFFICIAL_GROUP_ALIASES',
+        def: '',
+        type: 'string',
+        get: function(overrides) {
+            const raw = overrides.qqOfficialGroupAliases !== undefined
+                ? overrides.qqOfficialGroupAliases
+                : this.def
+            if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw
+            try {
+                const parsed = JSON.parse(String(raw || '{}'))
+                return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {}
+            } catch {
+                return {}
+            }
+        }
+    },
 
     pythonPath: {
         env: 'PYTHON_PATH',

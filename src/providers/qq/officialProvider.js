@@ -12,6 +12,7 @@ const OfficialMediaUploader = require('./official/mediaUploader')
 const QpmRateLimiter = require('./official/rateLimiter')
 const OfficialIdStore = require('./official/idStore')
 const OfficialMessageIdStore = require('./official/messageIdStore')
+const { syncCommandPanels } = require('./official/panelSync')
 
 const GROUP_AND_C2C_EVENT_INTENT = 1 << 25
 
@@ -162,7 +163,37 @@ class OfficialQqProvider extends BaseQqProvider {
         if (this.publishGlobal && this.runtimeActive) this.publishGlobalState()
         await this.tokenManager.getAccessToken()
         await this.gateway.start()
+        this._panelSyncPromise = this.syncCommandPanels()
         return this
+    }
+
+    /**
+     * 将 bot 命令清单同步到 QQ 官方指令面板（c2c + group）。
+     * 失败不影响网关运行，仅记录错误。
+     */
+    async syncCommandPanels() {
+        if (this.config.qqOfficialPanelSync === false) {
+            return { skipped: true }
+        }
+        try {
+            const results = await syncCommandPanels({
+                client: this.openapi,
+                items: this.config.qqOfficialPanelItems,
+                logger: this.logger
+            })
+            this.logger.logEvent('info', 'QQ', 'svc:qq:provider', 'panel-sync-finished', {
+                results: results.map((item) => `${item.scope}:${item.action}`)
+            })
+            this.lastPanelSync = { at: Date.now(), results }
+            return { skipped: false, results }
+        } catch (error) {
+            this.recordError(error, 'panel_sync')
+            this.logger.logEvent('warn', 'QQ', 'svc:qq:provider', 'panel-sync-failed', {
+                error: this.logger.getErrorMessage ? this.logger.getErrorMessage(error) : String(error)
+            })
+            this.lastPanelSync = { at: Date.now(), error: String(error?.message || error) }
+            return { skipped: false, error }
+        }
     }
 
     async stop() {
@@ -202,10 +233,20 @@ class OfficialQqProvider extends BaseQqProvider {
         }
     }
 
+    // toGroupListMap 基础上叠加手动别名，dashboard / callAction 读到的 group_name 即可读。
+    buildGroupListMap() {
+        const map = this.idStore.toGroupListMap()
+        for (const [groupOpenId, info] of map.entries()) {
+            const displayName = this.resolveGroupDisplayName(groupOpenId)
+            if (displayName) info.group_name = displayName
+        }
+        return map
+    }
+
     updateGroupList() {
         if (!this.publishGlobal || !this.runtimeActive) return
         global.bot = global.bot || {}
-        global.bot.groupList = this.idStore.toGroupListMap()
+        global.bot.groupList = this.buildGroupListMap()
     }
 
     publishGlobalState() {
@@ -214,7 +255,7 @@ class OfficialQqProvider extends BaseQqProvider {
         global.bot.selfId = this.selfId || 'official'
         global.bot.nickname = global.bot.nickname || 'QQ Official Bot'
         global.bot.ws = null
-        global.bot.groupList = this.idStore.toGroupListMap()
+        global.bot.groupList = this.buildGroupListMap()
     }
 
     activateGlobal() {
@@ -320,6 +361,18 @@ class OfficialQqProvider extends BaseQqProvider {
         if (!mapped) return
 
         const official = mapped.official || {}
+        if (mapped.post_type === 'message') {
+            const rawText = Array.isArray(mapped.message)
+                ? mapped.message.filter((segment) => segment?.type === 'text').map((segment) => segment.data?.text || '').join('')
+                : ''
+            this.logger.logEvent('info', 'QQ', 'svc:qq:provider', 'message-content-debug', {
+                eventType: official.eventType || type,
+                contentPreview: String(mapped.raw_message || '').slice(0, 120),
+                strippedText: rawText.slice(0, 120),
+                mentionedSelf: Boolean(mapped.official?.mentionedSelf),
+                mentionCount: Array.isArray(event.d?.mentions) ? event.d.mentions.length : 0
+            })
+        }
         this.logger.logEvent('info', 'QQ', 'svc:qq:provider', 'event-dispatch', {
             eventType: official.eventType || type,
             messageType: mapped.message_type || '',
@@ -341,6 +394,7 @@ class OfficialQqProvider extends BaseQqProvider {
                 this.idStore.markGroupMembership(official.groupOpenId, 'left')
             } else {
                 this.idStore.markGroupMessageEvent(official.groupOpenId, official.eventType)
+                this.maybeRefreshGroupInfo(official.groupOpenId)
             }
         }
         if (official.userOpenId) {
@@ -370,6 +424,85 @@ class OfficialQqProvider extends BaseQqProvider {
         this.updateGroupList()
         if (typeof this.onEvent === 'function') {
             this.onEvent(mapped)
+        }
+    }
+
+    // 群显示名解析优先级：API 拉取的群名称（idStore）> 手动别名配置 > 空串（调用方回退到 id）。
+    resolveGroupDisplayName(groupOpenId) {
+        const id = String(groupOpenId || '').trim()
+        if (!id) return ''
+        const stored = typeof this.idStore.getGroup === 'function' ? this.idStore.getGroup(id) : null
+        const apiName = (stored && stored.groupName && String(stored.groupName).trim()) || ''
+        if (apiName) return apiName
+        const aliases = this.config.qqOfficialGroupAliases || {}
+        const alias = aliases[id]
+        if (alias && String(alias).trim()) return String(alias).trim()
+        return ''
+    }
+
+    // best-effort 拉取群信息并写入 idStore；无白名单权限（11253/403）只记日志，绝不抛出。
+    // 失败 id 进入负缓存，避免无权限 bot 每个消息事件都重复打一次注定失败的 API。
+    async refreshGroupInfo(groupOpenId) {
+        const id = String(groupOpenId || '').trim()
+        if (!id) return null
+        const cached = this.idStore.getGroup(id)
+        if (cached && cached.groupName && String(cached.groupName).trim()) {
+            return cached.groupName
+        }
+        if (!this._groupInfoFailed) this._groupInfoFailed = new Set()
+        if (this._groupInfoFailed.has(id)) return null
+        try {
+            const resp = await this.openapi.getGroupInfo(id)
+            const groupName = String(resp?.group_name || resp?.groupName || '').trim()
+            if (groupName) {
+                this._groupInfoFailed.delete(id)
+                this.idStore.upsertGroup(id, { groupName })
+                this.updateGroupList()
+                return groupName
+            }
+            return null
+        } catch (error) {
+            const code = error?.qqCode ?? null
+            const status = error?.httpStatus || 0
+            this._groupInfoFailed.add(id)
+            this.logger.logEvent(
+                code === 11253 || status === 403 ? 'info' : 'warn',
+                'BOT',
+                'official:group_info',
+                'get_group_info failed (best-effort)',
+                { groupOpenId: id, qqCode: code, httpStatus: status }
+            )
+            return null
+        }
+    }
+
+    // 群事件触发时异步补拉群名（fire-and-forget），让 dashboard 群列表自动变成可读名称。
+    maybeRefreshGroupInfo(groupOpenId) {
+        const id = String(groupOpenId || '').trim()
+        if (!id) return
+        if (this.resolveGroupDisplayName(id)) return
+        Promise.resolve()
+            .then(() => this.refreshGroupInfo(id))
+            .catch(() => {})
+    }
+
+    // 返回群内已知成员概况（来自事件观测，非完整群成员列表）。
+    getGroupRoster(groupOpenId) {
+        const id = String(groupOpenId || '').trim()
+        if (!id) return { memberCount: 0, ownerNickname: '', adminNicknames: [] }
+        const members = this.idStore.listGroupMembers(id)
+        const owners = []
+        const admins = []
+        for (const member of members) {
+            const nickname = String(member.nickname || '').trim()
+            const label = nickname || String(member.memberOpenId || '').slice(0, 8)
+            if (member.role === 'owner') owners.push(label)
+            else if (member.role === 'admin') admins.push(label)
+        }
+        return {
+            memberCount: members.length,
+            ownerNickname: owners[0] || '',
+            adminNicknames: admins
         }
     }
 
@@ -441,7 +574,19 @@ class OfficialQqProvider extends BaseQqProvider {
             return {
                 status: 'ok',
                 retcode: 0,
-                data: Array.from(this.idStore.toGroupListMap().values())
+                data: Array.from(this.buildGroupListMap().values())
+            }
+        }
+        if (name === 'get_group_info') {
+            const groupOpenId = String(params.group_id || '')
+            return {
+                status: 'ok',
+                retcode: 0,
+                data: {
+                    group_id: groupOpenId,
+                    group_name: this.resolveGroupDisplayName(groupOpenId),
+                    known: Boolean(this.idStore.getGroup(groupOpenId))
+                }
             }
         }
         return {
@@ -463,6 +608,7 @@ class OfficialQqProvider extends BaseQqProvider {
             rateLimiter: this.rateLimiter.getStatus(),
             idStore: this.idStore.getStatus(),
             messageIdStore: this.messageIdStore.getStatus(),
+            lastPanelSync: this.lastPanelSync || null,
             recentErrors: this.recentErrors.slice(-10)
         }
     }

@@ -19,6 +19,11 @@ const LINK_EMOJI = {
     SHUSH:    '128164',  // 💤 睡觉 —— 全部链接在冷却期，跳过
 }
 
+// @bot 兜底提示：@ 了 bot 但既非命令也非链接时的回复
+const AT_FALLBACK_HINT = '在的～发送 /菜单 查看全部功能，或直接发送 B站链接 自动解析预览。'
+const AT_FALLBACK_COOLDOWN_MS = 60000
+const atFallbackLastSentAt = new Map()
+
 function parsePositiveInteger(value, fallback) {
     const parsed = parseInt(value, 10)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
@@ -196,6 +201,9 @@ class MessageHandler {
         const message = messageData.message;
         const messageSegments = Array.isArray(message) ? message : [];
         let rawMessage = String(messageData.raw_message || '');
+        // 去掉开头的 @bot 前缀（NapCat CQ at 段；官方端已在 eventMapper 剥离），
+        // 让 "@bot /命令" 与直接发 "/命令" 等价
+        rawMessage = this.stripLeadingSelfAtPrefix(messageData, rawMessage);
         const userId = messageData.user_id ? String(messageData.user_id) : null;
         const actorAuthIds = getActorAuthIds(messageData, userId);
         let groupId = messageData.group_id ? String(messageData.group_id) : null;
@@ -290,6 +298,31 @@ class MessageHandler {
              }
         }
 
+        // 群管自动识别：群主/管理员发言时自动授予群管理员权限（免手工配置）
+        // 依据消息事件中的 sender.role（官方: author.member_role；NapCat: sender.role）
+        const isPrivateBeforeRoleGrant = typeof groupId === 'string' && groupId.startsWith('private_');
+        if (groupId && !isPrivateBeforeRoleGrant && userId) {
+            const senderRole = String(messageData.sender?.role || '').trim().toLowerCase();
+            if (senderRole === 'owner' || senderRole === 'admin') {
+                try {
+                    const granted = await config.addGroupAdmin(groupId, userId);
+                    if (granted) {
+                        logger.logEvent('info', 'BOT', traceContext.scope, 'group-admin-auto-granted', {
+                            groupId,
+                            userId,
+                            senderRole
+                        });
+                    }
+                } catch (e) {
+                    logger.logEvent('warn', 'BOT', traceContext.scope, 'group-admin-auto-grant-failed', {
+                        groupId,
+                        userId,
+                        error: logger.getErrorMessage(e)
+                    });
+                }
+            }
+        }
+
         // 检查群组是否启用
         // Skip check for private messages (virtual groups)
         const isPrivate = typeof groupId === 'string' && groupId.startsWith('private_');
@@ -365,6 +398,46 @@ class MessageHandler {
 
             return
         }
+
+        // ========== @Bot Fallback Hint ==========
+        // 群里 @ 了 bot 但内容既非命令也非链接时，回复使用提示（带群级冷却防刷屏）
+        if (groupId && !isPrivate && this.messageMentionsBot(messageData)) {
+            const now = Date.now()
+            const lastSentAt = atFallbackLastSentAt.get(groupId) || 0
+            if (now - lastSentAt >= AT_FALLBACK_COOLDOWN_MS) {
+                atFallbackLastSentAt.set(groupId, now)
+                logger.logEvent('info', 'BOT', traceContext.scope, 'at-fallback-hint-sent', {
+                    groupId,
+                    userId
+                })
+                this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: AT_FALLBACK_HINT } }], userId)
+            }
+        }
+    }
+
+    stripLeadingSelfAtPrefix(messageData = {}, rawMessage = '') {
+        const selfId = String(messageData.self_id || '')
+        if (!selfId || !rawMessage) return rawMessage
+        const segments = Array.isArray(messageData.message) ? messageData.message : []
+        const first = segments[0]
+        if (first?.type !== 'at' || String(first.data?.qq || '') !== selfId) return rawMessage
+        const restText = segments.slice(1)
+            .filter((segment) => segment?.type === 'text')
+            .map((segment) => segment.data?.text || '')
+            .join('')
+        const trimmed = restText.trim()
+        // 只有 @bot 没有后续文本时保留原始内容（走兜底提示）
+        return trimmed || rawMessage
+    }
+
+    messageMentionsBot(messageData = {}) {
+        if (messageData.official?.mentionedSelf) return true
+        const selfId = String(messageData.self_id || '')
+        if (!selfId) return false
+        const segments = Array.isArray(messageData.message) ? messageData.message : []
+        return segments.some((segment) =>
+            segment?.type === 'at' && String(segment.data?.qq || '') === selfId
+        )
     }
 
     // 将base64图片保存为临时文件并返回文件路径
@@ -466,3 +539,4 @@ module.exports = new MessageHandler();
 module.exports._markMessageIfNew = markMessageIfNew
 module.exports._processedMessageIds = processedMessageIds
 module.exports._buildMessageDedupKey = buildMessageDedupKey
+module.exports._atFallbackLastSentAt = atFallbackLastSentAt

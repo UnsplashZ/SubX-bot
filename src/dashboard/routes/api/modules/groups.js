@@ -35,6 +35,34 @@ router.get('/groups', async (req, res) => {
         const whitelistMode = enabledGroups.length > 0
         const allGroupIds = getKnownManageableGroupIds(sysConfig, bot, { allowOpaque })
 
+        // 官方 provider：对群名未知的群补拉群信息（best-effort；成功/失败都会缓存，
+        // 失败多为 11253 无白名单权限，之后不再重复请求）。dashboard 因此无需等群消息事件也能显示群名。
+        let officialProvider = null
+        try {
+            const provider = require('../../../../providers/qq/runtime').getCurrentProvider()
+            if (provider && String(provider.id) === 'official' &&
+                typeof provider.refreshGroupInfo === 'function' &&
+                typeof provider.resolveGroupDisplayName === 'function') {
+                officialProvider = provider
+            }
+        } catch (e) {
+            officialProvider = null
+        }
+        if (officialProvider) {
+            for (const groupId of allGroupIds) {
+                const groupIdStr = String(groupId)
+                if (officialProvider.resolveGroupDisplayName(groupIdStr)) continue
+                try {
+                    await officialProvider.refreshGroupInfo(groupIdStr)
+                } catch (e) {
+                    dashLog(req, 'info', 'group-info-refresh-failed', {
+                        groupId: groupIdStr,
+                        error: logger.getErrorMessage(e)
+                    })
+                }
+            }
+        }
+
         const groupsData = Array.from(allGroupIds)
             .sort((a, b) => {
                 const aNumeric = isNumericGroupId(a)
@@ -65,7 +93,8 @@ router.get('/groups', async (req, res) => {
 
             return {
                 id: groupIdStr,
-                name: groupInfo?.group_name || `群组 ${groupIdStr}`,
+                name: (officialProvider && officialProvider.resolveGroupDisplayName(groupIdStr)) ||
+                    groupInfo?.group_name || `群组 ${groupIdStr}`,
                 isEnabled: whitelistMode ? enabledSet.has(groupIdStr) : true,
                 isInGroup,
                 config: configWithDefaults

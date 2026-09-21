@@ -110,6 +110,36 @@ class OfficialOpenApiClient {
         const query = options.hidetip ? '?hidetip=true' : ''
         return this.requestJson('DELETE', `/v2/users/${encodeURIComponent(userOpenId)}/messages/${encodeURIComponent(messageId)}${query}`)
     }
+
+    listPanels(scope, options = {}) {
+        const params = new URLSearchParams()
+        if (scope) params.set('scope', scope)
+        if (options.cursor) params.set('cursor', String(options.cursor))
+        if (options.limit) params.set('limit', String(options.limit))
+        const query = params.toString()
+        return this.requestJson('GET', `/v2/panels${query ? `?${query}` : ''}`)
+    }
+
+    createPanel(body) {
+        return this.requestJson('POST', '/v2/panels', { body })
+    }
+
+    getPanel(panelId) {
+        return this.requestJson('GET', `/v2/panels/${encodeURIComponent(panelId)}`)
+    }
+
+    updatePanel(panelId, body) {
+        return this.requestJson('PUT', `/v2/panels/${encodeURIComponent(panelId)}`, { body })
+    }
+
+    deletePanel(panelId) {
+        return this.requestJson('DELETE', `/v2/panels/${encodeURIComponent(panelId)}`)
+    }
+
+    // 群信息接口需要白名单权限（错误码 11253 = 无权限），调用方需自行容错。
+    getGroupInfo(groupOpenId) {
+        return this.requestJson('GET', `/v2/groups/${encodeURIComponent(groupOpenId)}/info`)
+    }
 }
 
 module.exports = OfficialOpenApiClient

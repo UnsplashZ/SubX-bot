@@ -19,14 +19,22 @@ export const validateNightMode = (nightMode) => {
   return null;
 };
 
+// 兼容两种身份：数字 QQ 号（5-11 位）或官方 provider 的 openid
+// （与后端 SAFE_ENTITY_ID_PATTERN 一致：[A-Za-z0-9:_-]，最长 200 字符）
+const OPENID_PATTERN = /^[A-Za-z0-9:_-]{1,200}$/;
+
 export const validateAdminQQ = (qq) => {
-  if (!/^\d+$/.test(qq)) {
-    return '请输入有效的 QQ 号（纯数字）';
+  const value = String(qq ?? '').trim();
+  if (/^\d+$/.test(value)) {
+    if (value.length < 5 || value.length > 11) {
+      return 'QQ 号长度不正确（应为 5-11 位）';
+    }
+    return null;
   }
 
-  if (qq.length < 5 || qq.length > 11) {
-    return 'QQ 号长度不正确（应为 5-11 位）';
+  if (OPENID_PATTERN.test(value)) {
+    return null;
   }
 
-  return null;
+  return '请输入有效的 QQ 号或 OpenID';
 };
