@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { AlertTriangle, Check, RefreshCw } from 'lucide-react';
-import { DataTable } from '../components/ui';
+import { AlertTriangle, Check, Clock3, Cpu, MemoryStick, Network, RefreshCw } from 'lucide-react';
+import { Card, DataTable } from '../components/ui';
 import { formatBytes, formatUptime, formatNetSpeed } from '../utils/format';
 import api from '../utils/auth';
 
@@ -238,27 +238,38 @@ const Dashboard = () => {
       label: 'CPU 负载',
       value: formatPercent(stats.cpu),
       detail: cpuTone === 'success' ? '运行平稳' : '负载偏高',
-      tone: cpuTone
+      tone: cpuTone,
+      icon: Cpu
     },
     {
       label: '内存使用',
       value: formatBytes(memoryUsed),
       detail: memoryTotal ? `共 ${formatBytes(memoryTotal)}` : '总量未知',
-      tone: memoryTone
+      tone: memoryTone,
+      icon: MemoryStick
     },
     {
       label: '网络流量',
       value: `↑ ${formatNetSpeed(stats.network?.up ?? 0)}`,
       detail: `↓ ${formatNetSpeed(stats.network?.down ?? 0)}`,
-      tone: 'accent'
+      tone: 'accent',
+      icon: Network
     },
     {
       label: '运行时间',
       value: formatUptime(stats.uptime),
       detail: '当前进程',
-      tone: 'success'
+      tone: 'success',
+      icon: Clock3
     }
   ];
+
+  const kpiIconClass = {
+    success: 'bg-[var(--success-soft)] text-[color-mix(in_oklch,var(--success)_88%,var(--fg))]',
+    warn: 'bg-[var(--warn-soft)] text-[color-mix(in_oklch,var(--warn)_88%,var(--fg))]',
+    danger: 'bg-[var(--danger-soft)] text-[color-mix(in_oklch,var(--danger)_88%,var(--fg))]',
+    accent: 'bg-[var(--accent-soft)] text-[var(--accent)]'
+  };
 
   const healthRows = [
     providerView,
@@ -319,9 +330,9 @@ const Dashboard = () => {
         </div>
       </header>
 
-      <section className="mt-6 flex flex-col gap-3 border-y border-[var(--border)] py-4 sm:flex-row sm:items-center">
-        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${healthy ? 'bg-[var(--success-soft)] text-[var(--success)]' : 'bg-[var(--warn-soft)] text-[var(--warn)]'}`}>
-          {healthy ? <Check size={15} /> : <AlertTriangle size={14} />}
+      <Card className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${healthy ? 'bg-[var(--success-soft)] text-[var(--success)]' : 'bg-[var(--warn-soft)] text-[var(--warn)]'}`}>
+          {healthy ? <Check size={17} /> : <AlertTriangle size={16} />}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
           <strong className="text-sm font-semibold text-[var(--fg)]">
@@ -331,24 +342,35 @@ const Dashboard = () => {
             {fetchError || `${providerView.label} ${providerView.state}，系统资源监控已连接`}
           </span>
         </div>
-        <span className="text-xs text-[var(--muted)]">已运行 {formatUptime(stats.uptime)}</span>
+        <span className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
+          <Clock3 size={13} className="text-[var(--subtle)]" />
+          已运行 {formatUptime(stats.uptime)}
+        </span>
+      </Card>
+
+      <section className="dashboard-metrics mt-4">
+        {kpis.map((kpi) => {
+          const KpiIcon = kpi.icon;
+          return (
+            <Card key={kpi.label}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-xs font-medium text-[var(--muted)]">{kpi.label}</div>
+                <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${kpiIconClass[kpi.tone] || kpiIconClass.accent}`}>
+                  <KpiIcon size={15} />
+                </span>
+              </div>
+              <div className="mt-3 text-[22px] font-semibold leading-7 tracking-[-0.01em] tabular-nums text-[var(--fg)]">
+                {kpi.value}
+              </div>
+              <div className={`mt-1.5 text-[11px] ${toneTextClass(kpi.tone)}`}>{kpi.detail}</div>
+            </Card>
+          );
+        })}
       </section>
 
-      <section className="dashboard-metrics border-b border-[var(--border)]">
-        {kpis.map((kpi) => (
-          <div key={kpi.label} className="dashboard-metric">
-            <div className="text-xs text-[var(--muted)]">{kpi.label}</div>
-            <div className="mt-3 font-mono text-2xl font-semibold tracking-[-0.03em] text-[var(--fg)] md:text-[27px]">
-              {kpi.value}
-            </div>
-            <div className={`mt-1.5 text-[11px] ${toneTextClass(kpi.tone)}`}>{kpi.detail}</div>
-          </div>
-        ))}
-      </section>
-
-      <section className="grid border-b border-[var(--border)] py-7 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0 xl:pr-8">
-          <div className="flex items-start justify-between gap-4">
+      <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <Card padded={false} className="overflow-hidden">
+          <div className="flex items-start justify-between gap-4 px-5 pt-5">
             <div>
               <h2 className="text-base font-semibold text-[var(--fg)]">资源趋势</h2>
               <p className="mt-1 text-[11px] text-[var(--muted)]">最近 60 个采样点，每 2 秒更新</p>
@@ -359,7 +381,7 @@ const Dashboard = () => {
               <span>内存</span>
             </div>
           </div>
-          <div className="mt-4 h-64 md:h-72">
+          <div className="h-64 px-2 pb-2 pt-4 md:h-72">
             <ResponsiveContainer
               width="100%"
               height="100%"
@@ -382,7 +404,7 @@ const Dashboard = () => {
                   contentStyle={{
                     backgroundColor: 'var(--surface-raised)',
                     borderColor: 'var(--border)',
-                    borderRadius: 8,
+                    borderRadius: 10,
                     boxShadow: 'var(--shadow-floating)',
                     color: 'var(--fg)',
                     fontSize: 12
@@ -398,14 +420,14 @@ const Dashboard = () => {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </Card>
 
-        <div className="border-t border-[var(--border)] pt-6 xl:border-l xl:border-t-0 xl:pl-8 xl:pt-0">
+        <Card>
           <h2 className="text-base font-semibold text-[var(--fg)]">运行健康</h2>
           <p className="mt-1 text-[11px] text-[var(--muted)]">来自当前运行时的实时状态</p>
-          <div className="mt-4">
+          <div className="mt-3 divide-y divide-[var(--border-subtle)]">
             {healthRows.map((row) => (
-              <div key={row.label} className="flex min-h-14 items-center justify-between gap-4 border-b border-[var(--border-subtle)] last:border-b-0">
+              <div key={row.label} className="flex min-h-14 items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-xs font-semibold text-[var(--fg)]">
                     <span className={`h-1.5 w-1.5 rounded-full bg-current ${toneTextClass(row.tone)}`} />
@@ -417,21 +439,21 @@ const Dashboard = () => {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </section>
 
-      <section className="pt-7">
-        <div className="flex items-start justify-between gap-4">
+      <Card padded={false} className="mt-4 overflow-hidden">
+        <div className="flex items-start justify-between gap-4 px-5 pt-5">
           <div>
             <h2 className="text-base font-semibold text-[var(--fg)]">自动化流程</h2>
             <p className="mt-1 text-[11px] text-[var(--muted)]">处理数量、失败情况与最近状态</p>
           </div>
           <span className="font-mono text-[10px] text-[var(--subtle)]">{processRows.length} 个流程</span>
         </div>
-        <div className="mt-4 border-y border-[var(--border)]">
+        <div className="mt-3">
           <DataTable columns={processColumns} rows={processRows} getRowKey={(row) => row.key} />
         </div>
-      </section>
+      </Card>
     </div>
   );
 };

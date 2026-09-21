@@ -47,9 +47,9 @@ function testPreviewGradientSectionUsesPreviewModalEntry() {
   assert.ok(!source.includes('即时渐变反馈'))
 }
 
-function testPreviewLayoutEditorHostsPreviewGradientSection() {
+function testSettingsPageHostsPreviewGradientSection() {
   const source = fs.readFileSync(
-    path.join(repoRoot, 'dashboard/src/pages/PreviewLayoutEditor.jsx'),
+    path.join(repoRoot, 'dashboard/src/pages/Settings.jsx'),
     'utf8'
   )
 
@@ -70,7 +70,7 @@ function testPreviewModalExists() {
 
 await testResolveEffectivePreviewGradientColors()
 testPreviewGradientSectionUsesPreviewModalEntry()
-testPreviewLayoutEditorHostsPreviewGradientSection()
+testSettingsPageHostsPreviewGradientSection()
 testPreviewModalExists()
 
 console.log('PASS preview-gradient-editor')

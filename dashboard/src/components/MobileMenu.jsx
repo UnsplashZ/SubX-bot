@@ -40,13 +40,12 @@ const MobileMenuItem = ({ icon, label, href, active, onClick }) => {
     <Link
       to={href}
       onClick={onClick}
-      className={`relative flex items-center gap-3 px-4 py-2.5 transition-colors sm:px-5 ${
+      className={`relative flex items-center gap-3 rounded-lg px-4 py-2.5 transition-colors duration-150 sm:px-5 ${
         active
-          ? 'font-semibold text-[var(--fg)]'
-          : 'text-[var(--muted)] hover:text-[var(--fg)]'
+          ? 'bg-[color-mix(in_oklch,var(--fg)_7%,transparent)] font-semibold text-[var(--fg)]'
+          : 'text-[var(--muted)] hover:bg-[color-mix(in_oklch,var(--fg)_4%,transparent)] hover:text-[var(--fg)]'
       }`}
     >
-      {active && <span className="absolute bottom-2 left-0 top-2 w-0.5 rounded-r bg-[var(--accent)]" />}
       <span className="flex min-w-0 items-center gap-3">
         {React.createElement(icon, {
           size: 19,
@@ -98,10 +97,10 @@ const MobileMenu = ({ isOpen, onClose }) => {
         <nav className="flex-1 space-y-5 p-3 sm:p-4">
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
-              <div className="px-3 text-[10px] font-semibold text-[var(--subtle)]">
+              <div className="px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--subtle)]">
                 {group.label}
               </div>
-              <div className="mt-1 grid">
+              <div className="mt-1.5 grid gap-0.5">
                 {group.items.map((item) => (
                   <MobileMenuItem
                     key={item.href}

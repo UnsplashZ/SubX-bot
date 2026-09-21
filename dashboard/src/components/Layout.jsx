@@ -21,7 +21,7 @@ const THEME_ICONS = {
 
 const BrandIcon = ({ className = '' }) => (
   <div
-    className={`grid place-items-center overflow-hidden rounded-lg bg-[var(--accent)] shadow-sm ${className}`}
+    className={`grid place-items-center overflow-hidden rounded-[10px] bg-[var(--accent)] ${className}`}
   >
     <img
       src={botIcon}
@@ -42,13 +42,12 @@ const SidebarItem = ({ icon, label, href, active }) => {
   return (
     <Link
       to={href}
-      className={`group relative flex min-h-9 items-center gap-3 px-3 py-2 text-[13px] transition-colors ${
+      className={`group relative flex min-h-9 items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition-colors duration-150 ${
         active
-          ? 'font-semibold text-[var(--fg)]'
-          : 'text-[var(--muted)] hover:text-[var(--fg)]'
+          ? 'bg-[color-mix(in_oklch,var(--fg)_7%,transparent)] font-semibold text-[var(--fg)]'
+          : 'text-[var(--muted)] hover:bg-[color-mix(in_oklch,var(--fg)_4%,transparent)] hover:text-[var(--fg)]'
       }`}
     >
-      {active && <span className="absolute bottom-1.5 -left-3 top-1.5 w-0.5 rounded-r bg-[var(--accent)]" />}
       <span className="flex min-w-0 items-center gap-3">
         {React.createElement(icon, {
           size: 17,
@@ -84,7 +83,7 @@ const Layout = ({ children }) => {
         </h1>
       </header>
 
-      <aside className="fixed left-0 top-0 z-50 hidden h-full w-56 border-r border-[var(--border)] bg-[var(--surface-muted)] md:flex md:flex-col">
+      <aside className="fixed left-0 top-0 z-50 hidden h-full w-56 border-r border-[var(--border)] bg-[color-mix(in_oklch,var(--surface-muted)_86%,transparent)] backdrop-blur-xl md:flex md:flex-col">
         <div className="px-5 pb-6 pt-5">
           <div className="flex items-center gap-3">
             <BrandIcon className="h-8 w-8" />
@@ -98,10 +97,10 @@ const Layout = ({ children }) => {
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
-              <div className="px-3 text-[10px] font-semibold text-[var(--subtle)]">
+              <div className="px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--subtle)]">
                 {group.label}
               </div>
-              <div className="mt-1 grid">
+              <div className="mt-1.5 grid gap-0.5">
                 {group.items.map((item) => (
                   <SidebarItem
                     key={item.href}

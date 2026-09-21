@@ -64,6 +64,38 @@ describe('ServiceManager runtime reconfigure', function () {
         await manager.cleanup()
     })
 
+    it('re-resolves pythonPath from the config provider when start runs', async function () {
+        const spawned = []
+        const spawn = (command, args) => {
+            spawned.push({ command, args })
+            const child = new EventEmitter()
+            child.stdout = new EventEmitter()
+            child.stderr = new EventEmitter()
+            child.exitCode = null
+            child.kill = () => {
+                child.exitCode = 0
+                child.emit('exit', 0, 'SIGTERM')
+                return true
+            }
+            return child
+        }
+        const manager = new ServiceManager({
+            bypassSingleton: true,
+            configProvider: () => snapshot(12031, { paths: { python: 'venv-python-marker' } }),
+            httpClient: { get: async () => { throw new Error('offline') } },
+            spawn
+        })
+        manager.waitForHealth = async () => {}
+
+        await manager.start()
+
+        assert.equal(spawned.length, 1)
+        assert.equal(spawned[0].command, 'venv-python-marker')
+        assert.equal(manager.pythonPath, 'venv-python-marker')
+        await manager.stop({ timeoutMs: 50, forceGraceMs: 50 })
+        await manager.cleanup()
+    })
+
     it('requires health identity, generation, effect hash, build and pid to match', async function () {
         const manager = createManager()
         const runtime = manager.resolveRuntimeConfig(snapshot())

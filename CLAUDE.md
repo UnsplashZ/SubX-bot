@@ -23,7 +23,7 @@ SubX-bot/
 │   │   ├── bili_server.py   # Python compatibility entry
 │   │   ├── imageGenerator/  # Preview card rendering and generation
 │   │   ├── previewLayout/   # Legacy patch-based layout overrides (data-layout-key); validation/migration/fallback path
-│   │   ├── previewTemplate/ # Authoritative template-based layout engine (data-template-node-id); source of truth for /preview-layout
+│   │   ├── previewTemplate/ # Authoritative template-based layout engine (data-template-node-id); applied at render time (the /preview-layout dashboard editor was removed)
 │   │   ├── previewLab/      # Preview Lab service support
 │   │   └── subscription/    # Subscription service and update checker
 │   │       └── updateChecker/ # Feed, video, article, live checks

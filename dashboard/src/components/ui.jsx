@@ -8,7 +8,7 @@ export const Card = ({ as = 'section', children, className, padded = true }) => 
     {
       className: twMerge(
         clsx(
-          'rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--fg)]',
+          'rounded-[10px] border border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--fg)] shadow-[var(--shadow-card)]',
           padded && 'p-4 sm:p-5',
           className
         )
@@ -37,7 +37,7 @@ export const PanelHeader = ({
   >
     <div className="min-w-0">
       {eyebrow && (
-        <div className="mb-1 font-mono text-xs font-semibold uppercase text-[var(--accent)]">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--accent)]">
           {eyebrow}
         </div>
       )}
@@ -75,15 +75,15 @@ export const Button = React.forwardRef(function Button(
       type={type}
       className={twMerge(
         clsx(
-          'inline-flex items-center justify-center gap-2 rounded-lg border font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55',
-          size === 'sm' ? 'min-h-8 px-3 py-1.5 text-xs' : 'min-h-10 px-4 py-2 text-sm',
+          'inline-flex items-center justify-center gap-2 rounded-lg border font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55',
+          size === 'sm' ? 'min-h-8 px-3 py-1.5 text-xs' : 'min-h-9 px-3.5 py-1.5 text-[13px]',
           buttonVariants[variant],
           className
         )
       )}
       {...props}
     >
-      {Icon && <Icon size={16} />}
+      {Icon && <Icon size={15} />}
       {children}
     </button>
   );
@@ -119,11 +119,11 @@ export const ToggleSwitch = ({ checked, onChange, label, disabled = false, class
 );
 
 const statusTones = {
-  neutral: 'border-[var(--border-subtle)] text-[var(--muted)]',
-  accent: 'border-[color-mix(in_oklch,var(--accent)_28%,var(--border-subtle))] text-[var(--accent-muted)]',
-  success: 'border-[color-mix(in_oklch,var(--success)_28%,var(--border-subtle))] text-[color-mix(in_oklch,var(--success)_84%,var(--fg))]',
-  warn: 'border-[color-mix(in_oklch,var(--warn)_32%,var(--border-subtle))] text-[color-mix(in_oklch,var(--warn)_84%,var(--fg))]',
-  danger: 'border-[color-mix(in_oklch,var(--danger)_32%,var(--border-subtle))] text-[color-mix(in_oklch,var(--danger)_84%,var(--fg))]',
+  neutral: 'border-[var(--border-subtle)] bg-[var(--surface-quiet)] text-[var(--muted)]',
+  accent: 'border-[color-mix(in_oklch,var(--accent)_26%,var(--border-subtle))] bg-[var(--accent-soft)] text-[var(--accent-muted)]',
+  success: 'border-[color-mix(in_oklch,var(--success)_26%,var(--border-subtle))] bg-[var(--success-soft)] text-[color-mix(in_oklch,var(--success)_84%,var(--fg))]',
+  warn: 'border-[color-mix(in_oklch,var(--warn)_30%,var(--border-subtle))] bg-[var(--warn-soft)] text-[color-mix(in_oklch,var(--warn)_84%,var(--fg))]',
+  danger: 'border-[color-mix(in_oklch,var(--danger)_30%,var(--border-subtle))] bg-[var(--danger-soft)] text-[color-mix(in_oklch,var(--danger)_84%,var(--fg))]',
 };
 
 export const StatusPill = ({ children, tone = 'neutral', className }) => (
@@ -164,7 +164,7 @@ export const DataTable = ({ columns, rows, getRowKey, empty = '暂无数据', cl
           rows.map((row, rowIndex) => (
             <tr
               key={getRowKey ? getRowKey(row, rowIndex) : rowIndex}
-              className="border-b border-[var(--border-subtle)] last:border-b-0 hover:bg-[var(--surface-quiet)]"
+              className="border-b border-[var(--border-subtle)] last:border-b-0 transition-colors hover:bg-[var(--surface-quiet)]"
             >
               {columns.map((column) => (
                 <td

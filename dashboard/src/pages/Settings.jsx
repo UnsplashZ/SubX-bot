@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import api from '../utils/auth'
 import { useToast } from '../hooks/useToast'
 import GeneralSettingsSection from './settings/components/GeneralSettingsSection'
@@ -6,12 +6,14 @@ import QqProviderSection from './settings/components/QqProviderSection'
 import BiliGlobalSection from './settings/components/BiliGlobalSection'
 import GlobalBlacklistSection from './settings/components/GlobalBlacklistSection'
 import VideoDownloadSection from './settings/components/VideoDownloadSection'
+import PreviewGradientSection from './settings/components/PreviewGradientSection'
 import ConfigRuntimeStatusSection from './settings/components/ConfigRuntimeStatusSection'
 import SystemControlSection from './settings/components/SystemControlSection'
 import RestartConfirmModal from './settings/components/RestartConfirmModal'
 import BiliQrModal from './settings/components/BiliQrModal'
 import useSettingsData from './settings/hooks/useSettingsData'
 import useBiliLogin from './settings/hooks/useBiliLogin'
+import usePreviewGradientSettings from './settings/hooks/usePreviewGradientSettings'
 import { Check, CloudUpload, Loader2, X } from 'lucide-react'
 
 const formatSavedAt = (date) =>
@@ -44,12 +46,14 @@ const AutoSaveIndicator = ({ state }) => {
 const Settings = () => {
   const { show } = useToast()
   const [isRestartModalOpen, setIsRestartModalOpen] = useState(false)
+  const previewGradientGenerationRef = useRef(null)
 
   const settingsData = useSettingsData(show)
   const biliActions = useBiliLogin({
     show,
     setBiliGlobalStatus: settingsData.setBiliGlobalStatus
   })
+  const previewGradientSettings = usePreviewGradientSettings(show, previewGradientGenerationRef)
 
   const handleRestart = () => {
     setIsRestartModalOpen(true)
@@ -130,6 +134,14 @@ const Settings = () => {
         videoDownloadConfig={settingsData.videoDownloadConfig}
         onVideoDownloadChange={(field, value) => settingsData.setVideoDownloadConfig(p => ({ ...p, [field]: value }))}
         disabled={recoveryRequired}
+      />
+
+      <PreviewGradientSection
+        previewGradientConfig={previewGradientSettings.previewGradientConfig}
+        onPreviewGradientChange={previewGradientSettings.handlePreviewGradientChange}
+        onResetPreviewGradient={previewGradientSettings.resetPreviewGradientSettings}
+        onSavePreviewGradient={previewGradientSettings.savePreviewGradientSettings}
+        saving={previewGradientSettings.savingPreviewGradient}
       />
 
       <SystemControlSection onRestart={handleRestart} />

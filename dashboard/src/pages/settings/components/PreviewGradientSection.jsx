@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import GlassCard from '../../../components/GlassCard'
 import SettingRow from '../../../components/SettingRow'
 import { Button } from '../../../components/ui'
 import GradientColorPickerPopover from './GradientColorPickerPopover'
@@ -216,10 +217,8 @@ const PreviewGradientSection = ({
     }
 
     return (
-        <section
-            ref={previewGradientSectionRef}
-            className={`admin-section relative border-y border-[var(--border)] py-5 ${className}`}
-        >
+        <div ref={previewGradientSectionRef} className="relative">
+        <GlassCard className={className || ''}>
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex items-center gap-2">
                     <Palette className="text-[var(--accent)]" size={18} />
@@ -321,7 +320,8 @@ const PreviewGradientSection = ({
                 color1={effectivePreviewColors.previewGradientColor1}
                 color2={effectivePreviewColors.previewGradientColor2}
             />
-        </section>
+        </GlassCard>
+        </div>
     )
 }
 

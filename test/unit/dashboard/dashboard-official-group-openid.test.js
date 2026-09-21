@@ -8,7 +8,6 @@ const request = require('supertest')
 const sysConfig = require('../../../src/config')
 const groupsRouter = require('../../../src/dashboard/routes/api/modules/groups')
 const groupVideoDownloadRouter = require('../../../src/dashboard/routes/api/modules/group-video-download')
-const previewLayoutRouter = require('../../../src/dashboard/routes/api/modules/preview-layout')
 const subscriptionManager = require('../../../src/services/subscription/subscriptionManager')
 
 function createApp(...routers) {
@@ -103,7 +102,7 @@ describe('dashboard official group_openid support', () => {
     })
 
     it('lists and updates official opaque group ids in dashboard APIs', async () => {
-        const app = createApp(groupsRouter, groupVideoDownloadRouter, previewLayoutRouter)
+        const app = createApp(groupsRouter, groupVideoDownloadRouter)
 
         const listRes = await request(app).get('/api/groups')
         assert.equal(listRes.status, 200)
@@ -122,10 +121,6 @@ describe('dashboard official group_openid support', () => {
             .send({ videoDownloadEnabled: true, videoDownloadResolution: '720p', expectedGeneration: 2 })
         assert.equal(videoRes.status, 200)
         assert.equal(videoRes.body.config.videoDownloadEnabled, true)
-
-        const previewRes = await request(app)
-            .get('/api/preview-layout/config?type=video&groupId=group-openid')
-        assert.equal(previewRes.status, 200)
     })
 
     it('keeps opaque group ids rejected in onebot compatibility mode', async () => {

@@ -14,7 +14,7 @@ const SettingRow = ({
     <div
       className={twMerge(
         clsx(
-          'grid gap-3 border-b border-[var(--border-subtle)] px-0 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(220px,auto)_auto] md:items-center',
+          'grid gap-3 border-b border-[var(--border-subtle)] px-0 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center',
           className
         )
       )}
@@ -25,10 +25,12 @@ const SettingRow = ({
           <div className="mt-1 text-xs leading-relaxed text-[var(--muted)]">{description}</div>
         )}
       </div>
-      <div className="min-w-0 md:justify-self-end">{control || children}</div>
-      {status && (
-        <div className="text-xs font-medium text-[var(--muted)] md:justify-self-end">{status}</div>
-      )}
+      <div className="flex min-w-0 items-center gap-2 md:justify-self-end">
+        <div className="min-w-0 flex-1 md:flex-initial">{control || children}</div>
+        {status && (
+          <span className="shrink-0 text-xs font-medium text-[var(--muted)]">{status}</span>
+        )}
+      </div>
     </div>
   );
 };

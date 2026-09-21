@@ -190,12 +190,12 @@ function Groups() {
         <div className="w-full lg:w-2/3 flex flex-col">
           {selectedGroupId ? (
             <GlassCard className="flex flex-1 flex-col overflow-hidden p-0">
-              <div className="flex flex-col gap-3 border-b border-[var(--border)] py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-semibold text-[var(--fg)]">
                     {groups.find((group) => group.id === selectedGroupId)?.name || '群组设置'}
                   </h2>
-                  <div className="mt-1 text-xs text-slate-500">ID: {selectedGroupId}</div>
+                  <div className="mt-1 text-xs text-[var(--muted)]">ID: {selectedGroupId}</div>
                 </div>
                 <Button
                   onClick={handleSaveAll}

@@ -282,6 +282,11 @@ class ServiceManager {
             return;
         }
 
+        // Re-resolve runtime config from the provider at start time: the constructor
+        // captures defaults before the config service finishes initializing, so
+        // paths.python / PYTHON_PATH from a cold start must be re-read here.
+        this.applyRuntimeConfig(this.resolveRuntimeConfig(this.configProvider()))
+
         if (await this.isServiceHealthy(300, null)) {
             const error = new Error(`Python service port ${this.port} is already occupied by an unmanaged instance`)
             error.code = 'PYTHON_PORT_CONFLICT'

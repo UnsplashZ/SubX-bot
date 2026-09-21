@@ -6,7 +6,6 @@ import Settings from './pages/Settings';
 import Logs from './pages/Logs';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import PreviewLayoutEditor from './pages/PreviewLayoutEditor';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ToastProvider } from './components/ToastProvider';
 import ThemeProvider from './components/ThemeProvider';
@@ -58,17 +57,6 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <Logs />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/preview-layout"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <PreviewLayoutEditor />
                   </Layout>
                 </ProtectedRoute>
               }

@@ -13,7 +13,7 @@ const ModernTabs = ({ tabs, selectedIndex, onChange, children }) => {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="relative overflow-x-auto border-b border-[var(--border)]">
+      <div className="relative overflow-x-auto border-b border-[var(--border-subtle)] px-2 sm:px-3">
         <div
           className="relative grid min-w-max"
           style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(7rem, 1fr))` }}
