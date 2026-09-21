@@ -5,6 +5,7 @@ const assert = require('assert')
 
 const config = require('../../../src/config')
 const messageHandler = require('../../../src/handlers/messageHandler')
+const linkService = require('../../../src/services/link')
 
 function makeNapcatMessage(rawMessage, messageId, { userId = '111111', selfId = '222222', atFirst = true } = {}) {
     const message = []
@@ -89,10 +90,41 @@ describe('messageHandler napcat @bot command support', () => {
 
     it('dispatches @bot link messages to link processing (raw text kept after strip)', async () => {
         const sent = []
-        const message = makeNapcatMessage(' 看这个 https://www.bilibili.com/video/BV1234567890', 'nc-2')
-        await messageHandler.handleMessage(makeProvider(sent), message)
-        // 链接处理路径会发送表情表态或预览，不应静默丢弃
-        assert.ok(sent.length > 0)
+        const originals = {
+            prepareIncomingMessageLinks: linkService.prepareIncomingMessageLinks,
+            isCached: linkService.isCached,
+            handleIncomingMessageLinks: linkService.handleIncomingMessageLinks
+        }
+        let capturedRawMessage = null
+        linkService.prepareIncomingMessageLinks = async ({ rawMessage }) => {
+            capturedRawMessage = rawMessage
+            return {
+                rawMessage,
+                safeRawMessage: rawMessage,
+                descriptors: [{ cacheKey: 'video|BV1234567890|nc-2', match: 'BV1234567890', type: 'video', id: 'BV1234567890' }]
+            }
+        }
+        linkService.isCached = () => false
+        linkService.handleIncomingMessageLinks = async () => ({
+            allCached: false,
+            foundCount: 1,
+            skippedCachedCount: 0,
+            successCount: 1,
+            failureCount: 0,
+            results: [{ status: 'sent_card' }]
+        })
+        try {
+            const message = makeNapcatMessage(' 看这个 https://www.bilibili.com/video/BV1234567890', 'nc-2')
+            await messageHandler.handleMessage(makeProvider(sent), message)
+            // 链接处理路径会发送表情表态或预览，不应静默丢弃
+            assert.ok(sent.length > 0)
+            // @bot 前缀被剥离后，原始文本应原样进入链接解析
+            assert.strictEqual(capturedRawMessage, '看这个 https://www.bilibili.com/video/BV1234567890')
+        } finally {
+            linkService.prepareIncomingMessageLinks = originals.prepareIncomingMessageLinks
+            linkService.isCached = originals.isCached
+            linkService.handleIncomingMessageLinks = originals.handleIncomingMessageLinks
+        }
     })
 
     it('falls back to usage hint for mention-only napcat messages', async () => {
