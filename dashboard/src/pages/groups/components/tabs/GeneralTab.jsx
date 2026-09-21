@@ -53,7 +53,7 @@ const LabelVisibilityRow = ({ label, enabled, onChange }) => (
 const GeneralTab = ({ formData, setFormData }) => {
   return (
     <div className="space-y-5 md:space-y-6 focus:outline-none">
-      <div className="divide-y divide-white/10">
+      <div className="divide-y divide-[var(--border-subtle)]">
         <SettingRow
           title="链接缓存超时"
           description="同一链接重复解析的群组级冷却时间。"

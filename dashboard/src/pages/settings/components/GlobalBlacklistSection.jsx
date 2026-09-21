@@ -25,7 +25,7 @@ const GlobalBlacklistSection = ({
                             value={newBlacklistQQ}
                             disabled={disabled}
                             onChange={(e) => onNewBlacklistQQChange(e.target.value)}
-                            placeholder="输入 QQ 号"
+                            placeholder="输入 QQ 号或 OpenID..."
                             className="field-control flex-1 px-3 py-2"
                             onKeyDown={(e) => e.key === 'Enter' && onAddBlacklist()}
                         />

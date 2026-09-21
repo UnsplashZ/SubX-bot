@@ -261,7 +261,7 @@ function Groups() {
               </ModernTabs>
             </GlassCard>
           ) : (
-            <GlassCard className="flex-1 flex flex-col items-center justify-center text-center text-gray-400">
+            <GlassCard className="flex-1 flex flex-col items-center justify-center text-center text-[var(--muted)]">
               <MessageSquare size={48} className="mb-4 opacity-50" />
               <h3 className="mb-2 text-xl font-medium text-[var(--fg)]">选择一个群组</h3>
               <p className="text-[var(--muted)]">从列表中选择一个群组以查看和编辑其配置。</p>

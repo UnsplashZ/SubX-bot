@@ -142,7 +142,7 @@ const QqProviderSection = ({
 
                             <SettingRow
                                 title="Root OpenID"
-                                description="Official 模式的 Root 管理员 openid，多个用逗号分隔。"
+                                description="Official 模式的 Root 管理员 OpenID，多个用逗号分隔。"
                                 control={
                                     <input
                                         type="text"

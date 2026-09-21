@@ -66,7 +66,7 @@ describe('Settings recovery lockout', () => {
 
     expect(screen.getByRole('button', { name: /从磁盘重载/ })).toBeDisabled()
     expect(screen.getByRole('switch', { name: '显示 UID' })).toBeDisabled()
-    expect(screen.getByPlaceholderText('输入 QQ 号')).toBeDisabled()
+    expect(screen.getByPlaceholderText('输入 QQ 号或 OpenID...')).toBeDisabled()
     expect(screen.getAllByRole('spinbutton').every(control => control.disabled)).toBe(true)
     expect(screen.getByRole('button', { name: /恢复运行时/ })).toBeEnabled()
   })
