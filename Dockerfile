@@ -52,7 +52,9 @@ RUN set -eux; \
       libxrandr2 libxrender1 libxkbcommon0 libasound2 libdbus-1-3 libgbm1 libdrm2; \
     curl -fsSL -o /tmp/chs.zip "https://registry.npmmirror.com/-/binary/playwright/builds/chromium/${PW_BUILD}/${zip}"; \
     unzip -q /tmp/chs.zip -d /tmp; \
-    mv /tmp/chrome-linux /chs; \
+    srcdir="$(find /tmp -maxdepth 1 -mindepth 1 -type d | head -1)"; \
+    mv "${srcdir}" /chs; \
+    if [ -f /chs/chrome-headless-shell ]; then mv /chs/chrome-headless-shell /chs/headless_shell; fi; \
     strip --strip-unneeded /chs/headless_shell; \
     rm -f /tmp/chs.zip; \
     chmod +x /chs/headless_shell; \
