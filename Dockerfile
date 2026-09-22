@@ -3,7 +3,7 @@ FROM node:22-bookworm-slim AS deps
 
 WORKDIR /app
 
-# 跳过 Puppeteer 自带 Chromium 下载，统一使用系统 Chromium
+# 跳过 Puppeteer 自带 Chromium 下载，统一使用独立下载的 headless shell
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_SKIP_DOWNLOAD=true
 
@@ -32,7 +32,34 @@ COPY dashboard/ ./
 RUN npm run build
 
 
-# 阶段3：运行时镜像（只包含运行必需内容）
+# 阶段3：下载并裁剪 chrome-headless-shell（替代完整 Chromium，体积更小）
+# npmmirror 的 chrome-for-testing 无 arm64 包，playwright 构建同时提供 x64/arm64
+FROM node:22-bookworm-slim AS browser
+
+ARG TARGETARCH
+ENV PW_BUILD=1200
+
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) zip="chromium-headless-shell-linux.zip" ;; \
+        arm64) zip="chromium-headless-shell-linux-arm64.zip" ;; \
+        *) echo "unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+    esac; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl unzip binutils ca-certificates \
+      libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
+      libx11-6 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxi6 \
+      libxrandr2 libxrender1 libxkbcommon0 libasound2 libdbus-1-3 libgbm1 libdrm2; \
+    curl -fsSL -o /tmp/chs.zip "https://registry.npmmirror.com/-/binary/playwright/builds/chromium/${PW_BUILD}/${zip}"; \
+    unzip -q /tmp/chs.zip -d /tmp; \
+    mv /tmp/chrome-linux /chs; \
+    strip --strip-unneeded /chs/headless_shell; \
+    rm -f /tmp/chs.zip; \
+    chmod +x /chs/headless_shell; \
+    /chs/headless_shell --version
+
+
+# 阶段4：运行时镜像（只包含运行必需内容）
 FROM node:22-bookworm-slim
 
 WORKDIR /app
@@ -48,40 +75,59 @@ RUN set -eux; \
       'deb http://mirrors.tuna.tsinghua.edu.cn/debian-security bookworm-security main contrib non-free non-free-firmware' \
       > /etc/apt/sources.list
 
-## 安装运行期系统依赖：Python + Chromium + ffmpeg + 字体
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    fonts-noto-cjk \
-    fonts-noto-core \
-    fonts-noto-color-emoji \
-    fonts-symbola \
-    chromium \
-    ffmpeg \
-    && rm -rf /usr/share/fonts/truetype/noto/NotoSerif*.ttf \
+## 安装系统依赖 + Python 依赖（单一 RUN，同层清理 pip 与缓存）
+##  headless shell 运行库替代完整 Chromium 的 gtk/llvm/mesa 依赖链
+COPY requirements.txt ./
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      python3 \
+      python3-pip \
+      fonts-noto-cjk \
+      fonts-noto-core \
+      fonts-noto-color-emoji \
+      fonts-symbola \
+      ffmpeg \
+      libnss3 \
+      libnspr4 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libatspi2.0-0 \
+      libx11-6 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxi6 \
+      libxrandr2 \
+      libxrender1 \
+      libxkbcommon0 \
+      libasound2 \
+      libdbus-1-3 \
+      libgbm1 \
+      libdrm2 \
+    && pip3 install --no-cache-dir -r requirements.txt --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ \
+    && apt-get purge -y python3-pip \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* \
+    && rm -f /usr/share/fonts/opentype/noto/NotoSerifCJK-*.ttc \
+    && rm -f requirements.txt \
     && fc-cache -fv
-
-## 安装 Python 依赖（bilibili-api 服务使用）
-COPY requirements.txt ./
-RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    && pip3 install --no-cache-dir uv --break-system-packages -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    && rm -f requirements.txt
 
 # 运行时环境变量：生产模式 + Puppeteer 浏览器路径
 ENV NODE_ENV=production \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_SKIP_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/chs/headless_shell
 
-## 仅拷贝运行需要的文件：生产 node_modules、后端源码、配置模板、前端 dist
+## 仅拷贝运行需要的文件：生产 node_modules、后端源码、配置模板、前端 dist、浏览器
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY src ./src
 COPY --from=dashboard-builder /app/dashboard/dist ./dashboard/dist
+COPY --from=browser /chs /chs
 
 # 创建运行期目录（日志/临时文件/下载目录/QQ 临时目录）
 RUN mkdir -p logs temp config fonts data/downloads /app/.config/QQ/tmp/

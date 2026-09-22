@@ -23,40 +23,88 @@ COPY dashboard/ ./
 RUN npm run build
 
 
+# 下载并裁剪 chrome-headless-shell（替代完整 Chromium）
+# npmmirror 的 chrome-for-testing 无 arm64 包，playwright 构建同时提供 x64/arm64
+FROM node:22-bookworm-slim AS browser
+
+ARG TARGETARCH
+ENV PW_BUILD=1200
+
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) zip="chromium-headless-shell-linux.zip" ;; \
+        arm64) zip="chromium-headless-shell-linux-arm64.zip" ;; \
+        *) echo "unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+    esac; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl unzip binutils ca-certificates \
+      libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
+      libx11-6 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxi6 \
+      libxrandr2 libxrender1 libxkbcommon0 libasound2 libdbus-1-3 libgbm1 libdrm2; \
+    curl -fsSL -o /tmp/chs.zip "https://registry.npmmirror.com/-/binary/playwright/builds/chromium/${PW_BUILD}/${zip}"; \
+    unzip -q /tmp/chs.zip -d /tmp; \
+    mv /tmp/chrome-linux /chs; \
+    strip --strip-unneeded /chs/headless_shell; \
+    rm -f /tmp/chs.zip; \
+    chmod +x /chs/headless_shell; \
+    /chs/headless_shell --version
+
+
 FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    fonts-noto-cjk \
-    fonts-noto-core \
-    fonts-noto-color-emoji \
-    fonts-symbola \
-    chromium \
-    ffmpeg \
-    && rm -rf /usr/share/fonts/truetype/noto/NotoSerif*.ttf \
+# 系统依赖 + Python 依赖（单一 RUN，同层清理 pip 与缓存）
+# headless shell 运行库替代完整 Chromium 的 gtk/llvm/mesa 依赖链
+COPY requirements.txt ./
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      python3 \
+      python3-pip \
+      fonts-noto-cjk \
+      fonts-noto-core \
+      fonts-noto-color-emoji \
+      fonts-symbola \
+      ffmpeg \
+      libnss3 \
+      libnspr4 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libatspi2.0-0 \
+      libx11-6 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxi6 \
+      libxrandr2 \
+      libxrender1 \
+      libxkbcommon0 \
+      libasound2 \
+      libdbus-1-3 \
+      libgbm1 \
+      libdrm2 \
+    && pip3 install --no-cache-dir -r requirements.txt --break-system-packages -i https://pypi.org/simple \
+    && apt-get purge -y python3-pip \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* \
+    && rm -f /usr/share/fonts/opentype/noto/NotoSerifCJK-*.ttc \
+    && rm -f requirements.txt \
     && fc-cache -fv
-
-COPY requirements.txt ./
-RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages \
-    && pip3 install --no-cache-dir uv --break-system-packages \
-    && rm -f requirements.txt
 
 ENV NODE_ENV=production \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_SKIP_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/chs/headless_shell
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY src ./src
 COPY --from=dashboard-builder /app/dashboard/dist ./dashboard/dist
+COPY --from=browser /chs /chs
 
 RUN mkdir -p logs temp config fonts data/downloads /app/.config/QQ/tmp/
 
