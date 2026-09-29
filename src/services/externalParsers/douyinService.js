@@ -5,6 +5,8 @@ const { expandExternalShortUrl } = require('./externalShortLinkExpander')
 
 const DETAIL_URL = 'https://www.douyin.com/aweme/v1/web/aweme/detail/'
 const PLAY_URL_TEMPLATE = 'https://aweme.snssdk.com/aweme/v1/play/?video_id={uri}&ratio=1080p&line=0'
+const DETAIL_MAX_ATTEMPTS = 3
+const DETAIL_RETRY_DELAYS_MS = [150, 350]
 
 const HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -33,7 +35,9 @@ function fetchJson(url) {
             res.on('data', (chunk) => { body += chunk })
             res.on('end', () => {
                 if (res.statusCode !== 200) {
-                    reject(new Error(`douyin detail HTTP ${res.statusCode}`))
+                    const error = new Error(`douyin detail HTTP ${res.statusCode}`)
+                    error.httpStatus = res.statusCode
+                    reject(error)
                     return
                 }
                 try {
@@ -43,21 +47,55 @@ function fetchJson(url) {
                 }
             })
         })
-        req.on('timeout', () => { req.destroy(); reject(new Error('douyin detail timeout')) })
+        req.on('timeout', () => {
+            const error = new Error('douyin detail timeout')
+            error.code = 'ETIMEDOUT'
+            req.destroy()
+            reject(error)
+        })
         req.on('error', reject)
     })
 }
 
-async function getAwemeDetail(awemeId) {
+function isRetryableDetailError(error) {
+    if (error?.douyinStatusCode === 5) return true
+    if (error?.httpStatus === 429 || error?.httpStatus >= 500) return true
+    return ['ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'ETIMEDOUT']
+        .includes(error?.code)
+}
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function getAwemeDetail(awemeId, options = {}) {
+    const fetcher = options.fetcher || fetchJson
+    const wait = options.wait || delay
+    const maxAttempts = options.maxAttempts || DETAIL_MAX_ATTEMPTS
     const qs = new URLSearchParams({ aweme_id: awemeId, aid: '6383' })
     const url = `${DETAIL_URL}?${qs}`
-    const json = await fetchJson(url)
 
-    if (!json || json.status_code !== 0 || !json.aweme_detail) {
-        throw new Error(`douyin API returned status_code=${json?.status_code}`)
+    let lastError = null
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const json = await fetcher(url)
+
+            if (!json || json.status_code !== 0 || !json.aweme_detail) {
+                const error = new Error(`douyin API returned status_code=${json?.status_code}`)
+                error.douyinStatusCode = json?.status_code
+                throw error
+            }
+
+            return json.aweme_detail
+        } catch (error) {
+            lastError = error
+            if (attempt >= maxAttempts || !isRetryableDetailError(error)) throw error
+            const delayMs = DETAIL_RETRY_DELAYS_MS[Math.min(attempt - 1, DETAIL_RETRY_DELAYS_MS.length - 1)]
+            await wait(delayMs)
+        }
     }
 
-    return json.aweme_detail
+    throw lastError
 }
 
 // 规范化为统一内部格式
@@ -123,13 +161,14 @@ function normalizeAweme(aweme) {
     return { ...base, type: 'douyin_video', cover: '' }
 }
 
-// 主入口：aweme_id → 标准化结果（可传入短链，内部自动展开）
-async function fetchDouyinContent(awemeIdOrShortUrl) {
-    let awemeId = awemeIdOrShortUrl
+// 主入口：aweme_id → 标准化结果，也接受抖音短链或已展开的长链
+async function fetchDouyinContent(awemeIdOrUrl) {
+    let awemeId = awemeIdOrUrl
 
-    // 如果传入的是短链，先展开
-    if (/^https?:\/\/(v|jx)\.douyin\.com\//.test(awemeIdOrShortUrl)) {
-        const expanded = await expandExternalShortUrl(awemeIdOrShortUrl)
+    if (/^https?:\/\//.test(awemeIdOrUrl)) {
+        const expanded = /^https?:\/\/(v|jx)\.douyin\.com\//.test(awemeIdOrUrl)
+            ? await expandExternalShortUrl(awemeIdOrUrl)
+            : awemeIdOrUrl
         awemeId = extractAwemeId(expanded)
         if (!awemeId) {
             throw new Error(`cannot extract aweme_id from expanded URL: ${expanded}`)
@@ -140,4 +179,11 @@ async function fetchDouyinContent(awemeIdOrShortUrl) {
     return normalizeAweme(aweme)
 }
 
-module.exports = { fetchDouyinContent, buildPlayUrl, normalizeAweme, extractAwemeId }
+module.exports = {
+    fetchDouyinContent,
+    getAwemeDetail,
+    isRetryableDetailError,
+    buildPlayUrl,
+    normalizeAweme,
+    extractAwemeId,
+}

@@ -5,6 +5,21 @@ const { expandExternalShortUrl, isDouyinOrXhsShortLink } = require('../../extern
 const logger = require('../../../utils/logger')
 const config = require('../../../config')
 
+function buildShortUrl(descriptor) {
+    let candidate = descriptor?.sourceToken || descriptor?.match || ''
+    if (candidate && !/^https?:\/\//i.test(candidate)) candidate = `https://${candidate}`
+
+    try {
+        const parsed = new URL(candidate)
+        if (['v.douyin.com', 'jx.douyin.com'].includes(parsed.hostname)
+            && parsed.pathname.split('/').filter(Boolean)[0] === descriptor.id) {
+            return parsed.href
+        }
+    } catch (_) {}
+
+    return `https://v.douyin.com/${descriptor.id}/`
+}
+
 module.exports = {
     type: 'douyin_short',
     cacheTtlSeconds: 60,   // 抖音 CDN URL 有 TTL，60s 后重新请求
@@ -22,7 +37,7 @@ module.exports = {
         }
 
         try {
-            const shortUrl = `https://v.douyin.com/${descriptor.id}/`
+            const shortUrl = buildShortUrl(descriptor)
             const expanded = isDouyinOrXhsShortLink(shortUrl)
                 ? await expandExternalShortUrl(shortUrl)
                 : shortUrl
@@ -41,7 +56,7 @@ module.exports = {
         // 平台关闭时返回 null，保证 pipeline 静默跳过
         if (info?.status === 'disabled') return null
         if (info?.data?.share_url) return info.data.share_url
-        return `https://v.douyin.com/${descriptor.id}/`
+        return buildShortUrl(descriptor)
     },
 
     buildFetchFailureText(info) {
@@ -52,5 +67,7 @@ module.exports = {
     resolveCardType(info) {
         // 短链展开后可能是视频 / 图集 / Live Photo，以实际数据类型为准
         return info?.data?.type || 'douyin_video'
-    }
+    },
+
+    buildShortUrl,
 }

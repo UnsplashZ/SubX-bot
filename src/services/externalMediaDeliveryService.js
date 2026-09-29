@@ -52,6 +52,14 @@ function toHttps(nextUrl) {
     return nextUrl.startsWith('http://') ? `https://${nextUrl.slice('http://'.length)}` : nextUrl
 }
 
+function scheduleFileCleanup(filePath) {
+    const timer = setTimeout(() => {
+        fsPromises.unlink(filePath).catch(() => {})
+    }, 5 * 60 * 1000)
+    timer.unref?.()
+    return timer
+}
+
 // 流式下载 URL 到 destPath
 // 播放地址可能返回 302 跳转 CDN（如 aweme.snssdk.com → douyinvod.com），需跟随重定向
 // 抖音 CDN 偶发 stall（连接不断但无数据），触发 60s 超时时整体重试一次（从原 URL 重新下载，
@@ -175,9 +183,7 @@ async function downloadAndSend({ ws, groupId, url, label, author, platform,
         const sent = await deliverVideoFile(ws, groupId, filePath, label, author || platform)
 
         // 发送后延迟 5 分钟清理
-        setTimeout(() => {
-            fsPromises.unlink(filePath).catch(() => {})
-        }, 5 * 60 * 1000)
+        scheduleFileCleanup(filePath)
 
         return sent
     } catch (err) {
@@ -236,7 +242,7 @@ async function deliverLivePhotoGroup(ws, groupId, livePhotos, platform, maxGroup
             try {
                 await streamDownload(videoUrl, filePath, maxVideoSizeBytes)
                 await deliverVideoFile(ws, groupId, filePath, 'Live Photo', platform)
-                setTimeout(() => fsPromises.unlink(filePath).catch(() => {}), 5 * 60 * 1000)
+                scheduleFileCleanup(filePath)
             } catch (e) {
                 fsPromises.unlink(filePath).catch(() => {})
                 logger.logEvent('warn', 'SEND', '', 'external-livephoto-send-failed', {
@@ -283,4 +289,11 @@ function fetchBuffer(url, maxBytes, redirectsLeft = 3) {
 let buildPlayUrl = (uri) => `https://aweme.snssdk.com/aweme/v1/play/?video_id=${encodeURIComponent(uri)}&ratio=1080p&line=0`
 function setBuildPlayUrl(fn) { buildPlayUrl = fn }
 
-module.exports = { downloadAndSend, deliverVideoFile, deliverImages, deliverLivePhotoGroup, setBuildPlayUrl }
+module.exports = {
+    downloadAndSend,
+    deliverVideoFile,
+    deliverImages,
+    deliverLivePhotoGroup,
+    scheduleFileCleanup,
+    setBuildPlayUrl,
+}

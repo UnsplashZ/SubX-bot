@@ -4,9 +4,16 @@ const assert = require('assert')
 const https = require('https')
 
 const linkHandler = require('../../../src/handlers/linkHandler')
-const { normalizeAweme, buildPlayUrl, extractAwemeId } = require('../../../src/services/externalParsers/douyinService')
+const {
+    normalizeAweme,
+    fetchDouyinContent,
+    getAwemeDetail,
+    buildPlayUrl,
+    extractAwemeId,
+} = require('../../../src/services/externalParsers/douyinService')
 const { isDouyinOrXhsShortLink, expandExternalShortUrl } = require('../../../src/services/externalParsers/externalShortLinkExpander')
 const douyinVideoHandler = require('../../../src/services/link/linkTypes/douyinVideo')
+const douyinShortHandler = require('../../../src/services/link/linkTypes/douyinShort')
 
 describe('douyin link extraction', function () {
     it('识别抖音视频长链', function () {
@@ -155,6 +162,92 @@ describe('douyin service helpers', function () {
         assert.strictEqual(extractAwemeId('https://m.douyin.com/share/video/7521023890996514083'), '7521023890996514083')
         assert.strictEqual(extractAwemeId('https://jingxuan.douyin.com/m/video/7521023890996514083'), '7521023890996514083')
         assert.strictEqual(extractAwemeId('https://www.douyin.com/discover?modal_id=123'), null)
+    })
+
+    it('详情接口 status_code=5 时有界重试并恢复', async function () {
+        let calls = 0
+        const waits = []
+        const detail = { aweme_id: '7650834539283862457' }
+        const result = await getAwemeDetail('7650834539283862457', {
+            fetcher: async () => {
+                calls++
+                if (calls < 3) return { status_code: 5 }
+                return { status_code: 0, aweme_detail: detail }
+            },
+            wait: async (ms) => { waits.push(ms) },
+        })
+
+        assert.strictEqual(result, detail)
+        assert.strictEqual(calls, 3)
+        assert.deepStrictEqual(waits, [150, 350])
+    })
+
+    it('详情接口确定性错误不重试', async function () {
+        let calls = 0
+        await assert.rejects(
+            getAwemeDetail('7650834539283862457', {
+                fetcher: async () => {
+                    calls++
+                    return { status_code: 4 }
+                },
+                wait: async () => { throw new Error('should not wait') },
+            }),
+            /status_code=4/
+        )
+        assert.strictEqual(calls, 1)
+    })
+
+    it('已展开的抖音长链先提取 aweme_id 再请求详情', async function () {
+        const originalGet = https.get
+        let requestedUrl = ''
+        https.get = (url, _options, callback) => {
+            requestedUrl = String(url)
+            const response = new (require('events').EventEmitter)()
+            response.statusCode = 200
+            const req = new (require('events').EventEmitter)()
+            req.destroy = () => {}
+            process.nextTick(() => {
+                callback(response)
+                response.emit('data', JSON.stringify({
+                    status_code: 0,
+                    aweme_detail: { aweme_id: '7650834539283862457' },
+                }))
+                response.emit('end')
+            })
+            return req
+        }
+
+        try {
+            const data = await fetchDouyinContent(
+                'https://www.douyin.com/video/7650834539283862457?previous_page=app_code_link'
+            )
+            assert.strictEqual(data.aweme_id, '7650834539283862457')
+            assert.match(requestedUrl, /aweme_id=7650834539283862457/)
+            assert.ok(!requestedUrl.includes(encodeURIComponent('https://www.douyin.com/video/')))
+        } finally {
+            https.get = originalGet
+        }
+    })
+})
+
+describe('douyinShort handler', function () {
+    it('保留 jx.douyin.com 原始短链域名和查询参数', function () {
+        const descriptor = {
+            id: 'iR5kX9y',
+            match: 'jx.douyin.com/iR5kX9y',
+            sourceToken: 'https://jx.douyin.com/iR5kX9y/?from=share',
+        }
+        assert.strictEqual(
+            douyinShortHandler.buildShortUrl(descriptor),
+            'https://jx.douyin.com/iR5kX9y/?from=share'
+        )
+    })
+
+    it('不可信原始地址回退到 v.douyin.com', function () {
+        assert.strictEqual(
+            douyinShortHandler.buildShortUrl({ id: 'iR5kX9y', sourceToken: 'https://evil.example/iR5kX9y/' }),
+            'https://v.douyin.com/iR5kX9y/'
+        )
     })
 })
 
