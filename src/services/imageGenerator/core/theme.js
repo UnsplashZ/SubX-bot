@@ -116,7 +116,12 @@ function getTypeConfig(type, data) {
         channel_series: { label: '合集', color: '#26A69A', icon: '📚' },
         article_list: { label: '文集', color: '#FAA023', icon: '📑' },
         note: { label: '笔记', color: '#4CAF50', icon: '📝' },
-        cheese_video: { label: '课程', color: '#FF7043', icon: '🎓' }
+        cheese_video: { label: '课程', color: '#FF7043', icon: '🎓' },
+        douyin_video: { label: '抖音视频', color: '#161823', icon: '🎵' },
+        douyin_note: { label: '抖音图集', color: '#161823', icon: '🖼️' },
+        douyin_live_photo: { label: '抖音 Live Photo', color: '#161823', icon: '✨' },
+        xhs_video: { label: '小红书视频', color: '#FF2442', icon: '📹' },
+        xhs_note: { label: '小红书笔记', color: '#FF2442', icon: '📕' }
     };
     let currentType = TYPE_CONFIG[type] || { label: 'Bilibili', color: '#FB7299', icon: '' };
 
@@ -1790,6 +1795,64 @@ function generateCSS(colorData, viewport, options = {}) {
 
             .serial-badge {
                 color: var(--serial-color, var(--color-subtext));
+            }
+
+            /* 外部平台（抖音 / 小红书）预览卡专属样式 */
+            .cover-badge {
+                position: absolute;
+                top: 16px;
+                right: 16px;
+                padding: 6px 16px;
+                font-size: 20px;
+                font-weight: 700;
+                color: #fff;
+                background: rgba(0, 0, 0, 0.55);
+                border-radius: var(--radius-md);
+                z-index: 2;
+            }
+
+            .user-signature {
+                font-size: 20px;
+                color: var(--color-subtext);
+            }
+
+            /* 图集 2×2 网格（抖音图集 / Live Photo / 小红书笔记共用） */
+            .note-image-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+                margin-top: 20px;
+                position: relative;
+            }
+
+            .note-thumb {
+                width: 100%;
+                aspect-ratio: 1;
+                object-fit: cover;
+                border-radius: var(--radius-md);
+                display: block;
+            }
+
+            .note-thumb.live-photo {
+                border: 2px solid var(--color-border);
+            }
+
+            .note-more {
+                position: absolute;
+                right: 12px;
+                bottom: 12px;
+                padding: 4px 14px;
+                font-size: 22px;
+                font-weight: 700;
+                color: #fff;
+                background: rgba(0, 0, 0, 0.6);
+                border-radius: var(--radius-md);
+            }
+
+            .xhs-desc {
+                font-size: 24px;
+                color: var(--color-subtext);
+                max-height: 200px;
             }
          </style>
      ` + (options.previewLayoutOverrideCss || '');

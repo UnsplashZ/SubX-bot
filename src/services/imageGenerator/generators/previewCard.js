@@ -7,6 +7,8 @@ const { renderLiveContent } = require('../renderers/live');
 const { renderDynamicContent } = require('../renderers/dynamic');
 const { renderUserContent } = require('../renderers/user');
 const { renderGenericContent } = require('../renderers/generic');
+const { renderDouyinVideoContent, renderDouyinNoteContent, renderDouyinLivePhotoContent } = require('../renderers/douyin');
+const { renderXhsVideoContent, renderXhsNoteContent } = require('../renderers/xiaohongshu');
 const { createRenderEmojiContext } = require('../renderers/components/renderEmojiContext');
 const config = require('../../../config');
 const logger = require('../../../utils/logger');
@@ -117,6 +119,16 @@ function renderContentHtml(type, data, showId, emojiContext) {
         return renderVideoContent(data, emojiContext);
     } else if (type === 'user') {
         return renderUserContent(data, showId, emojiContext);
+    } else if (type === 'douyin_video') {
+        return renderDouyinVideoContent(data, emojiContext);
+    } else if (type === 'douyin_note') {
+        return renderDouyinNoteContent(data, emojiContext);
+    } else if (type === 'douyin_live_photo') {
+        return renderDouyinLivePhotoContent(data, emojiContext);
+    } else if (type === 'xhs_video') {
+        return renderXhsVideoContent(data, emojiContext);
+    } else if (type === 'xhs_note') {
+        return renderXhsNoteContent(data, emojiContext);
     }
     return renderGenericContent(data, emojiContext);
 }

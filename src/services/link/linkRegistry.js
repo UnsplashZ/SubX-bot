@@ -17,6 +17,11 @@ const channelSeries = require('./linkTypes/channelSeries')
 const articleList = require('./linkTypes/articleList')
 const note = require('./linkTypes/note')
 const cheeseVideo = require('./linkTypes/cheeseVideo')
+const douyinVideo = require('./linkTypes/douyinVideo')
+const douyinNote = require('./linkTypes/douyinNote')
+const douyinShort = require('./linkTypes/douyinShort')
+const xhsNote = require('./linkTypes/xhsNote')
+const xhsShort = require('./linkTypes/xhsShort')
 
 const handlers = new Map([
     video,
@@ -35,7 +40,12 @@ const handlers = new Map([
     channelSeries,
     articleList,
     note,
-    cheeseVideo
+    cheeseVideo,
+    douyinVideo,
+    douyinNote,
+    douyinShort,
+    xhsNote,
+    xhsShort
 ].map((handler) => [handler.type, handler]))
 
 function getHandler(type) {

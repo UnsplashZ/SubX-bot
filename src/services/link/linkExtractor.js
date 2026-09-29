@@ -51,7 +51,14 @@ function extractLinksFromMessage(rawMessage, groupId, traceContext = null) {
         || checkStr.includes('bilibili')
         || /\b(?:[mM][lL]|[aA][uU]|[aA][mM]|[rR][lL])\d+\b/.test(checkStr)
 
-    if (!hasBilibiliDomain) {
+    // 外部平台（抖音 / 小红书）域名门控，独立变量避免污染 hasBilibiliDomain 的语义
+    const hasExternalPlatformDomain = checkStr.includes('douyin.com')
+        || checkStr.includes('iesdouyin.com')
+        || checkStr.includes('xhslink.com')
+        || checkStr.includes('xhslink.cn')
+        || checkStr.includes('xiaohongshu.com')
+
+    if (!hasBilibiliDomain && !hasExternalPlatformDomain) {
         logger.logEvent('debug', 'LINK', scope, 'extract-skipped', {
             groupId,
             reason: 'domain_not_found'

@@ -127,7 +127,10 @@ const groupConfigSchema = objectNode({
     showId: booleanNode(true),
     videoDownloadEnabled: booleanNode(false),
     videoDownloadResolution: stringNode('1080p'),
-    videoDownloadMaxDuration: integerNode(600, { minimum: 0 })
+    videoDownloadMaxDuration: integerNode(600, { minimum: 0 }),
+    douyinEnabled: booleanNode(false),
+    douyinDownloadEnabled: booleanNode(false),
+    xiaohongshuEnabled: booleanNode(false)
 }, { partial: true })
 
 const CONFIG_SCHEMA = objectNode({
@@ -232,6 +235,22 @@ const CONFIG_SCHEMA = objectNode({
         autoClean: booleanNode(true, { effects: ['download'] }),
         cleanTimeoutHours: integerNode(6, { minimum: 0, effects: ['download'] })
     }),
+    // 外部平台（抖音 / 小红书）解析与媒体投递配置，各平台默认关闭
+    externalParsers: objectNode({
+        douyin: objectNode({
+            enabled: booleanNode(false, { effects: ['externalParsers'] }),
+            downloadEnabled: booleanNode(false, { effects: ['externalParsers'] }),
+            downloadMaxDurationSeconds: integerNode(120, { minimum: 0, maximum: 600, effects: ['externalParsers'] }),
+            downloadMaxFileSizeMB: integerNode(50, { minimum: 1, maximum: 500, effects: ['externalParsers'] }),
+            // 预留：图集/Live Photo 多组下载的并发上限，当前实现为串行投递，暂未消费此配置
+            downloadMaxConcurrent: integerNode(2, { minimum: 1, maximum: 5, effects: ['externalParsers'] }),
+        }),
+        xiaohongshu: objectNode({
+            enabled: booleanNode(false, { effects: ['externalParsers'] }),
+            // 预留：小红书风控升级时供请求头注入 Cookie，当前 HTML 抓取无需登录态，暂未消费此配置
+            cookie: stringNode('', { secret: true, effects: ['externalParsers'] }),
+        }),
+    }),
     logging: objectNode({
         level: stringNode('info', { enum: ['trace', 'debug', 'info', 'warn', 'error', 'fatal'], effects: ['logging'] }),
         channels: arrayNode(stringNode(''), [], { effects: ['logging'] }),
@@ -295,6 +314,8 @@ const FLAT_KEY_TO_PATH = Object.freeze({
     videoDownloadMaxDuration: ['videoDownload', 'maxDurationSeconds'],
     videoDownloadAutoClean: ['videoDownload', 'autoClean'],
     videoDownloadCleanTimeout: ['videoDownload', 'cleanTimeoutHours'],
+    // 整节点暴露，供 config.externalParsers?.douyin?.enabled 嵌套访问
+    externalParsers: ['externalParsers'],
     blacklistedQQs: ['blacklistedQQs'],
     enabledGroups: ['enabledGroups'],
     providerScopedEnabledGroups: ['providerScopedEnabledGroups'],

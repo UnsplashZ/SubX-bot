@@ -22,7 +22,8 @@ async function fetch(handler, groupId, descriptor, options = {}) {
 
     info = await handler.fetch(groupId, descriptor)
     if (info && info.status === 'success') {
-        await cacheManager.set(cacheKey, info)
+        // handler 可声明 cacheTtlSeconds 覆盖全局 TTL（undefined = 用全局默认）
+        await cacheManager.set(cacheKey, info, handler.cacheTtlSeconds)
     }
 
     return {

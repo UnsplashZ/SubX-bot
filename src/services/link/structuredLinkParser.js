@@ -1,5 +1,10 @@
 'use strict'
 
+// 外部平台域名（抖音 / 小红书），用于 https 前缀补全与结构化解析门控
+const EXTERNAL_DOMAINS = [
+    'douyin.com', 'iesdouyin.com', 'xhslink.com', 'xhslink.cn', 'xiaohongshu.com'
+]
+
 function normalizeUrlToken(token) {
     return String(token || '')
         .trim()
@@ -15,7 +20,10 @@ function buildTokenInfo(token) {
     }
 
     let urlCandidate = normalizedToken
-    if (!/^https?:\/\//i.test(urlCandidate) && (urlCandidate.includes('bilibili.com') || urlCandidate.includes('b23.tv'))) {
+    const needsPrefix = urlCandidate.includes('bilibili.com')
+        || urlCandidate.includes('b23.tv')
+        || EXTERNAL_DOMAINS.some((d) => urlCandidate.includes(d))
+    if (!/^https?:\/\//i.test(urlCandidate) && needsPrefix) {
         urlCandidate = `https://${urlCandidate.replace(/^\/+/, '')}`
     }
 
@@ -83,7 +91,10 @@ function getSpaceTokenInfo(tokenInfo) {
 }
 
 function parseStructuredToken(tokenInfo, groupId) {
-    if (!tokenInfo?.normalizedToken || (!tokenInfo.normalizedToken.includes('bilibili.com') && !tokenInfo.normalizedToken.includes('b23.tv'))) {
+    if (!tokenInfo?.normalizedToken
+        || (!tokenInfo.normalizedToken.includes('bilibili.com')
+            && !tokenInfo.normalizedToken.includes('b23.tv')
+            && !EXTERNAL_DOMAINS.some((d) => tokenInfo.normalizedToken.includes(d)))) {
         return { handled: false, link: null }
     }
 
@@ -257,5 +268,6 @@ module.exports = {
     normalizeUrlToken,
     buildTokenInfo,
     createLink,
-    parseStructuredToken
+    parseStructuredToken,
+    EXTERNAL_DOMAINS
 }

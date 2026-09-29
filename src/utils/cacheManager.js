@@ -39,7 +39,8 @@ class CacheManager {
             const fetchedAtMs = this._resolveFetchedAtMs(parsed, stats);
             const ageSeconds = fetchedAtMs ? (Date.now() - fetchedAtMs) / 1000 : 0;
 
-            if (config.dataCacheTTL && fetchedAtMs && ageSeconds > config.dataCacheTTL) {
+            const ttl = parsed?.__cacheMeta?.ttlSeconds ?? config.dataCacheTTL
+            if (ttl && fetchedAtMs && ageSeconds > ttl) {
                 storeLog('info', 'cache-expired', {
                     key,
                     ageSeconds: ageSeconds.toFixed(0)
@@ -64,14 +65,17 @@ class CacheManager {
      * Save data to cache
      * @param {string} key - Cache key
      * @param {object} data - Data to cache
+     * @param {number} [ttlSeconds] - 可选的 per-key TTL（秒）；不传则回退到全局 config.dataCacheTTL
      */
-    async set(key, data) {
+    async set(key, data, ttlSeconds) {
         await this.initPromise;
         try {
             const filePath = path.join(this.cacheDir, `${key}.json`);
             const wrapped = {
                 __cacheMeta: {
-                    fetchedAt: Date.now()
+                    fetchedAt: Date.now(),
+                    // 只有显式传入时才写入，undefined 不写入
+                    ...(ttlSeconds != null ? { ttlSeconds } : {})
                 },
                 payload: data
             };
