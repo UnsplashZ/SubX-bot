@@ -17,7 +17,10 @@ export const createDefaultGroupFormData = () => ({
   cookieSyncGroupNames: [],
   blacklistedQQs: [],
   admins: [],
-  nightMode: createDefaultNightMode()
+  nightMode: createDefaultNightMode(),
+  douyinEnabled: false,
+  douyinDownloadEnabled: false,
+  xiaohongshuEnabled: false
 });
 
 const resolveCookieSyncGroupNames = (value) => {
@@ -42,6 +45,9 @@ export const mapGroupConfigToFormData = (config, globalShowId) => {
     cookieSyncGroupNames: resolveCookieSyncGroupNames(safeConfig.cookieSyncGroupNames),
     blacklistedQQs: Array.isArray(safeConfig.blacklistedQQs) ? safeConfig.blacklistedQQs : [],
     admins: Array.isArray(safeConfig.admins) ? safeConfig.admins : [],
-    nightMode: safeConfig.nightMode || createDefaultNightMode()
+    nightMode: safeConfig.nightMode || createDefaultNightMode(),
+    douyinEnabled: safeConfig.douyinEnabled ?? false,
+    douyinDownloadEnabled: safeConfig.douyinDownloadEnabled ?? false,
+    xiaohongshuEnabled: safeConfig.xiaohongshuEnabled ?? false
   };
 };

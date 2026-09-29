@@ -21,6 +21,40 @@ const {
 
 const router = express.Router()
 
+// Keep the dashboard group editor aligned with groupConfigSchema. Unknown
+// fields must not be copied into the persisted config object and bypass the
+// schema's additionalProperties=false contract.
+const GROUP_CONFIG_KEYS = new Set([
+    'linkCacheTimeout',
+    'labelConfig',
+    'enableCookieSync',
+    'subscriptionAtAll',
+    'subscriptionAtAllRules',
+    'cookieSyncGroupNames',
+    'blacklistedQQs',
+    'admins',
+    'nightMode',
+    'isInGroup',
+    'showId',
+    'videoDownloadEnabled',
+    'videoDownloadResolution',
+    'videoDownloadMaxDuration',
+    'douyinEnabled',
+    'douyinDownloadEnabled',
+    'xiaohongshuEnabled'
+])
+
+const GROUP_BOOLEAN_KEYS = new Set([
+    'enableCookieSync',
+    'subscriptionAtAll',
+    'isInGroup',
+    'showId',
+    'videoDownloadEnabled',
+    'douyinEnabled',
+    'douyinDownloadEnabled',
+    'xiaohongshuEnabled'
+])
+
 // GET /api/groups - List all groups (including disabled and left ones)
 router.get('/groups', async (req, res) => {
     try {
@@ -200,6 +234,20 @@ router.post('/groups/:id/config', async (req, res) => {
 
         if (!updates || typeof updates !== 'object') {
             return res.status(400).json({ error: 'Invalid configuration data' })
+        }
+
+        const unknownKeys = Object.keys(updates).filter((key) => !GROUP_CONFIG_KEYS.has(key))
+        if (unknownKeys.length > 0) {
+            return res.status(400).json({
+                error: 'Unknown group configuration field',
+                fields: unknownKeys
+            })
+        }
+
+        for (const key of GROUP_BOOLEAN_KEYS) {
+            if (Object.prototype.hasOwnProperty.call(updates, key) && typeof updates[key] !== 'boolean') {
+                return res.status(400).json({ error: `${key} must be a boolean` })
+            }
         }
 
         if (

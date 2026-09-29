@@ -201,4 +201,39 @@ describe('Dashboard API @all routes', function () {
         assert.strictEqual(res.status, 400)
         assert.strictEqual(res.body.code, 'CONFIG_EXPECTED_GENERATION_REQUIRED')
     })
+
+    it('POST /api/groups/:id/config accepts external parser flags and rejects unknown fields', async function () {
+        overwriteGroupConfigs({ '1000': {} })
+
+        const accepted = await request(app)
+            .post('/api/groups/1000/config')
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                expectedGeneration: 1,
+                douyinEnabled: true,
+                douyinDownloadEnabled: false,
+                xiaohongshuEnabled: true
+            })
+
+        assert.strictEqual(accepted.status, 200)
+        assert.strictEqual(accepted.body.config.douyinEnabled, true)
+        assert.strictEqual(accepted.body.config.douyinDownloadEnabled, false)
+        assert.strictEqual(accepted.body.config.xiaohongshuEnabled, true)
+
+        const unknown = await request(app)
+            .post('/api/groups/1000/config')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ expectedGeneration: 2, unsupportedField: true })
+
+        assert.strictEqual(unknown.status, 400)
+        assert.deepStrictEqual(unknown.body.fields, ['unsupportedField'])
+
+        const invalid = await request(app)
+            .post('/api/groups/1000/config')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ expectedGeneration: 2, xiaohongshuEnabled: 'true' })
+
+        assert.strictEqual(invalid.status, 400)
+        assert.match(invalid.body.error, /xiaohongshuEnabled/)
+    })
 })

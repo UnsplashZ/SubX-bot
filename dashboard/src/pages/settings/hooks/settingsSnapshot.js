@@ -32,6 +32,14 @@ export const DEFAULT_QQ_PROVIDER_CONFIG = {
     qqOfficialQueueMaxSize: 300
 }
 
+export const DEFAULT_EXTERNAL_PARSER_CONFIG = {
+    douyinEnabled: false,
+    douyinDownloadEnabled: false,
+    xiaohongshuEnabled: false,
+    xiaohongshuCookie: '',
+    xiaohongshuCookieConfigured: false
+}
+
 function extractConfig(source, defaults) {
     return Object.fromEntries(Object.entries(defaults).map(([key, fallback]) => [key, source?.[key] ?? fallback]))
 }
@@ -75,6 +83,11 @@ export function createHydratedSettingsState(snapshot = {}, status = {}) {
     return {
         generalConfig: extractConfig(snapshot, GENERAL_CONFIG_DEFAULTS),
         videoDownloadConfig: extractConfig(snapshot, DEFAULT_VIDEO_DOWNLOAD_CONFIG),
+        externalParserConfig: {
+            ...extractConfig(snapshot, DEFAULT_EXTERNAL_PARSER_CONFIG),
+            // Secret values are never returned by the API; this input is write-only.
+            xiaohongshuCookie: ''
+        },
         qqProviderConfig: {
             ...extractConfig(snapshot, DEFAULT_QQ_PROVIDER_CONFIG),
             wsToken: '',

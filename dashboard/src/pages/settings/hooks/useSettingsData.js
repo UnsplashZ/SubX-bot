@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import api from '../../../utils/auth'
 import {
     createHydratedSettingsState,
+    DEFAULT_EXTERNAL_PARSER_CONFIG,
     DEFAULT_QQ_PROVIDER_CONFIG,
     DEFAULT_VIDEO_DOWNLOAD_CONFIG,
     fetchConsistentSettingsSnapshot,
@@ -33,6 +34,7 @@ export default function useSettingsData(show) {
     const [addingBlacklist, setAddingBlacklist] = useState(false)
 
     const [videoDownloadConfig, setVideoDownloadConfig] = useState(DEFAULT_VIDEO_DOWNLOAD_CONFIG)
+    const [externalParserConfig, setExternalParserConfig] = useState(DEFAULT_EXTERNAL_PARSER_CONFIG)
     const [qqProviderConfig, setQqProviderConfig] = useState(DEFAULT_QQ_PROVIDER_CONFIG)
     const [qqProviderStatus, setQqProviderStatus] = useState(null)
     const [configStatus, setConfigStatus] = useState(null)
@@ -55,10 +57,12 @@ export default function useSettingsData(show) {
         const hydrated = createHydratedSettingsState(snapshot, status || {})
         setGeneralConfig(hydrated.generalConfig)
         setVideoDownloadConfig(hydrated.videoDownloadConfig)
+        setExternalParserConfig(hydrated.externalParserConfig)
         setQqProviderConfig(hydrated.qqProviderConfig)
         lastSyncedRef.current = JSON.stringify({
             ...hydrated.generalConfig,
             ...hydrated.videoDownloadConfig,
+            ...hydrated.externalParserConfig,
             ...hydrated.qqProviderConfig
         })
         latestMergedRef.current = null
@@ -139,6 +143,7 @@ export default function useSettingsData(show) {
         const merged = {
             ...generalConfig,
             ...videoDownloadConfig,
+            ...externalParserConfig,
             ...qqProviderConfig
         }
         if (JSON.stringify(merged) === lastSyncedRef.current) return
@@ -170,7 +175,7 @@ export default function useSettingsData(show) {
             })
         }, 800)
         return () => clearTimeout(timer)
-    }, [generalConfig, videoDownloadConfig, qqProviderConfig, loading, recoveryRequired, recoveringConfig, reloadingConfig, show])
+    }, [generalConfig, videoDownloadConfig, externalParserConfig, qqProviderConfig, loading, recoveryRequired, recoveringConfig, reloadingConfig, show])
 
     useEffect(() => {
         return () => {
@@ -227,8 +232,10 @@ export default function useSettingsData(show) {
         const sanitized = { ...values }
         delete sanitized.qqOfficialClientSecretConfigured
         delete sanitized.wsTokenConfigured
+        delete sanitized.xiaohongshuCookieConfigured
         if (!sanitized.qqOfficialClientSecret) delete sanitized.qqOfficialClientSecret
         if (!sanitized.wsToken) delete sanitized.wsToken
+        if (!sanitized.xiaohongshuCookie) delete sanitized.xiaohongshuCookie
         let response
         try {
             response = await api.post('/api/config', {
@@ -298,6 +305,16 @@ export default function useSettingsData(show) {
         } catch (error) {
             console.error('Failed to clear OneBot token:', error)
             show(error.response?.data?.error || '清除 Token 失败', 'error')
+        }
+    }
+
+    const clearXiaohongshuCookie = async () => {
+        try {
+            await applyConfig({}, { xiaohongshuCookie: 'clear' })
+            show('小红书登录 Cookie 已清除。', 'success')
+        } catch (error) {
+            console.error('Failed to clear Xiaohongshu cookie:', error)
+            show(error.response?.data?.error || '清除小红书登录凭据失败', 'error')
         }
     }
 
@@ -378,11 +395,14 @@ export default function useSettingsData(show) {
         handleRemoveBlacklist,
         videoDownloadConfig,
         setVideoDownloadConfig,
+        externalParserConfig,
+        setExternalParserConfig,
         qqProviderConfig,
         setQqProviderConfig,
         qqProviderStatus,
         clearOfficialSecret,
         clearOnebotToken,
+        clearXiaohongshuCookie,
         autoSaveState,
         configStatus,
         migrationStatus,

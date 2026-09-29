@@ -273,6 +273,34 @@ class SettingsCommand {
 
             // 4. 功能开关 (/设置 功能 <开|关> [群号])
             if (subCommand === '功能') {
+                const platformKey = {
+                    '抖音': 'douyinEnabled',
+                    '小红书': 'xiaohongshuEnabled',
+                    'xhs': 'xiaohongshuEnabled'
+                }[parts[2]];
+
+                // 外部平台开关只写入群配置，Cookie 等登录凭据不通过群命令处理。
+                if (platformKey) {
+                    const action = parts[3];
+                    const targetGroupId = parts[4] || groupId;
+                    if (!['开', '关'].includes(action)) {
+                        this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: '指令格式错误。请使用：/设置 功能 抖音 <开|关> 或 /设置 功能 小红书 <开|关>' } }]);
+                        return true;
+                    }
+                    if (!targetGroupId) {
+                        this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: '请指定群号或在群聊中使用。' } }]);
+                        return true;
+                    }
+                    if (String(targetGroupId) !== String(groupId) && !config.isRootAdmin(userId)) {
+                        this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: '权限不足：您只能管理当前群组的配置。' } }]);
+                        return true;
+                    }
+                    await setGroupConfigPath(targetGroupId, platformKey, action === '开');
+                    const platformName = platformKey === 'douyinEnabled' ? '抖音' : '小红书';
+                    this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: `已${action === '开' ? '开启' : '关闭'}群 ${targetGroupId} 的${platformName}解析。` } }]);
+                    return true;
+                }
+
                 const action = parts[2];
                 let targetGroupId = parts[3];
 

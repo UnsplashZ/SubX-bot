@@ -6,6 +6,7 @@ import QqProviderSection from './settings/components/QqProviderSection'
 import BiliGlobalSection from './settings/components/BiliGlobalSection'
 import GlobalBlacklistSection from './settings/components/GlobalBlacklistSection'
 import VideoDownloadSection from './settings/components/VideoDownloadSection'
+import ExternalParserSection from './settings/components/ExternalParserSection'
 import PreviewGradientSection from './settings/components/PreviewGradientSection'
 import ConfigRuntimeStatusSection from './settings/components/ConfigRuntimeStatusSection'
 import SystemControlSection from './settings/components/SystemControlSection'
@@ -133,6 +134,13 @@ const Settings = () => {
       <VideoDownloadSection
         videoDownloadConfig={settingsData.videoDownloadConfig}
         onVideoDownloadChange={(field, value) => settingsData.setVideoDownloadConfig(p => ({ ...p, [field]: value }))}
+        disabled={recoveryRequired}
+      />
+
+      <ExternalParserSection
+        config={settingsData.externalParserConfig}
+        onChange={(field, value) => settingsData.setExternalParserConfig(p => ({ ...p, [field]: value }))}
+        onClearCookie={settingsData.clearXiaohongshuCookie}
         disabled={recoveryRequired}
       />
 

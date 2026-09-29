@@ -19,6 +19,10 @@ const ALLOWED_GLOBAL_CONFIG_KEYS = new Set([
     'videoDownloadMaxDuration',
     'videoDownloadAutoClean',
     'videoDownloadCleanTimeout',
+    'douyinEnabled',
+    'douyinDownloadEnabled',
+    'xiaohongshuEnabled',
+    'xiaohongshuCookie',
     'wsUrl',
     'wsToken',
     'qqProvider',
@@ -53,11 +57,15 @@ const BOOLEAN_KEYS = new Set([
     'showId',
     'videoDownloadEnabled',
     'videoDownloadAutoClean',
+    'douyinEnabled',
+    'douyinDownloadEnabled',
+    'xiaohongshuEnabled',
     'qqOfficialUseShardedGateway'
 ])
 const SECRET_KEY_TO_PATH = Object.freeze({
     qqOfficialClientSecret: FLAT_KEY_TO_PATH.qqOfficialClientSecret,
-    wsToken: FLAT_KEY_TO_PATH.wsToken
+    wsToken: FLAT_KEY_TO_PATH.wsToken,
+    xiaohongshuCookie: FLAT_KEY_TO_PATH.xiaohongshuCookie
 })
 
 function clone(value) {

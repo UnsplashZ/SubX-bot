@@ -326,6 +326,8 @@ async function generateHelpCard(type = 'user', groupId) {
                     <div class="link-item"><span class="icon">📝</span> 笔记 / 课程 / 互动视频</div>
                     <div class="link-item"><span class="icon">🔗</span> 短链 (b23.tv)</div>
                     <div class="link-item"><span class="icon">📦</span> 小程序分享</div>
+                    <div class="link-item"><span class="icon">🎵</span> 抖音视频 / 图集 / Live Photo</div>
+                    <div class="link-item"><span class="icon">📕</span> 小红书图文 / 视频笔记</div>
                 </div>
             </div>
         `;
@@ -339,6 +341,14 @@ async function generateHelpCard(type = 'user', groupId) {
                     <div class="cmd-item">
                         <span class="cmd-code">/设置 功能 &lt;开|关&gt;</span>
                         <span class="cmd-desc">开关Bot权限</span>
+                    </div>
+                    <div class="cmd-item">
+                        <span class="cmd-code">/设置 功能 抖音 &lt;开|关&gt;</span>
+                        <span class="cmd-desc">开关本群抖音解析</span>
+                    </div>
+                    <div class="cmd-item">
+                        <span class="cmd-code">/设置 功能 小红书 &lt;开|关&gt;</span>
+                        <span class="cmd-desc">开关本群小红书解析</span>
                     </div>
                     <div class="cmd-item">
                         <span class="cmd-code">/设置 关注同步 &lt;开|关&gt;</span>

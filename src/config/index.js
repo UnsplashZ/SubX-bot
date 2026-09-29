@@ -372,11 +372,13 @@ const config = {
             'qqOfficialGatewayAckTimeoutMs', 'qqOfficialMediaUploadMode',
             'qqOfficialTempPublicBaseUrl', 'qqOfficialRootOpenids',
             'qqOfficialAccountQpm', 'qqOfficialGroupQpm',
-            'qqOfficialQueueMaxSize'
+            'qqOfficialQueueMaxSize', 'douyinEnabled',
+            'douyinDownloadEnabled', 'xiaohongshuEnabled'
         ]
         const snapshot = Object.fromEntries(keys.map((key) => [key, clone(this[key])]))
         snapshot.qqOfficialClientSecretConfigured = Boolean(this.qqOfficialClientSecret)
         snapshot.wsTokenConfigured = Boolean(this.wsToken)
+        snapshot.xiaohongshuCookieConfigured = Boolean(this.xiaohongshuCookie)
         snapshot.generation = this.getStatus().documentGeneration
         return snapshot
     }

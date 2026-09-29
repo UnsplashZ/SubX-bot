@@ -1,6 +1,7 @@
 'use strict'
 
 const https = require('https')
+const config = require('../../config')
 const logger = require('../../utils/logger')
 const { expandExternalShortUrl } = require('./externalShortLinkExpander')
 
@@ -10,13 +11,14 @@ const PC_UA  = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KH
 function fetchHtml(url, headers) {
     return new Promise((resolve, reject) => {
         const req = https.get(url, { headers, timeout: 12000 }, (res) => {
-            // 跟随 302，但只允许同域跳转
+            // 跟随 302，但只允许小红书域名跳转，并正确处理相对 Location。
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                const loc = res.headers.location
-                if (loc.includes('xiaohongshu.com')) {
-                    fetchHtml(loc, headers).then(resolve).catch(reject)
+                const loc = new URL(res.headers.location, url)
+                const hostname = loc.hostname.toLowerCase()
+                if (hostname === 'xiaohongshu.com' || hostname.endsWith('.xiaohongshu.com')) {
+                    fetchHtml(loc.toString(), headers).then(resolve).catch(reject)
                 } else {
-                    reject(new Error(`xhs redirect to unexpected host: ${loc}`))
+                    reject(new Error(`xhs redirect to unexpected host: ${loc.hostname}`))
                 }
                 return
             }
@@ -35,6 +37,11 @@ function fetchHtml(url, headers) {
     })
 }
 
+function buildHeaders(baseHeaders = {}) {
+    const cookie = String(config.externalParsers?.xiaohongshu?.cookie || '').trim()
+    return cookie ? { ...baseHeaders, Cookie: cookie } : baseHeaders
+}
+
 function extractInitialState(html) {
     const m = html.match(/window\.__INITIAL_STATE__=(.*?)<\/script>/)
     if (!m) throw new Error('xhs: window.__INITIAL_STATE__ not found')
@@ -49,10 +56,10 @@ function extractInitialState(html) {
 // Explore 路径（PC UA，无额外请求头）
 async function parseExplore(noteId, queryString) {
     const url = `https://www.xiaohongshu.com/explore/${noteId}${queryString}`
-    const html = await fetchHtml(url, {
+    const html = await fetchHtml(url, buildHeaders({
         'User-Agent': PC_UA,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    })
+    }))
     const state = extractInitialState(html)
     const wrapper = state?.note?.noteDetailMap?.[noteId]
     if (!wrapper?.note) throw new Error(`xhs explore: note ${noteId} not found in state`)
@@ -62,14 +69,14 @@ async function parseExplore(noteId, queryString) {
 // Discovery 回退路径（iOS UA + 额外请求头）
 async function parseDiscovery(noteId, queryString) {
     const url = `https://www.xiaohongshu.com/discovery/item/${noteId}${queryString}`
-    const html = await fetchHtml(url, {
+    const html = await fetchHtml(url, buildHeaders({
         'User-Agent': IOS_UA,
         'Origin': 'https://www.xiaohongshu.com',
         'X-Requested-With': 'XMLHttpRequest',
         'Sec-Fetch-Site': 'same-origin',
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Dest': 'empty',
-    })
+    }))
     const state = extractInitialState(html)
     const note = state?.noteData?.data?.noteData
     if (!note) throw new Error('xhs discovery: noteData not found in state')
@@ -147,12 +154,42 @@ async function fetchXhsContent(noteId, queryString = '') {
     }
 }
 
-// 从分享链接提取 noteId 和 queryString
-// queryString 必须可选：部分分享链接展开后不带 ?xsec_token=...，强制匹配 ? 会导致提取失败
-function extractNoteId(url) {
-    const m = url.match(/(?:explore|discovery\/item)\/([0-9a-f]{24})(\?[^\s]*)?/)
-    if (!m) return null
-    return { noteId: m[1], queryString: m[2] || '' }
+function extractDirectNoteId(value) {
+    if (typeof value !== 'string' || !value.trim()) return null
+    try {
+        const parsed = new URL(value.trim(), 'https://www.xiaohongshu.com')
+        const match = parsed.pathname.match(/\/(?:explore|discovery\/item)\/([0-9a-f]{24})\/?$/i)
+        if (!match) return null
+        return { noteId: match[1], queryString: parsed.search || '' }
+    } catch {
+        return null
+    }
+}
+
+// 从分享链接提取 noteId 和 queryString。短链有时先跳到 login，真实地址藏在 redirectPath 中。
+function extractNoteId(url, depth = 0) {
+    const direct = extractDirectNoteId(url)
+    if (direct || depth >= 2 || typeof url !== 'string') return direct
+
+    try {
+        const parsed = new URL(url.trim(), 'https://www.xiaohongshu.com')
+        const redirectPath = parsed.searchParams.get('redirectPath')
+        if (!redirectPath) return null
+        const candidates = [redirectPath]
+        try {
+            const decoded = decodeURIComponent(redirectPath)
+            if (decoded !== redirectPath) candidates.push(decoded)
+        } catch {
+            // URLSearchParams 已完成一次解码，二次解码失败时仍尝试原值。
+        }
+        for (const candidate of candidates) {
+            const result = extractNoteId(candidate, depth + 1)
+            if (result) return result
+        }
+    } catch {
+        return null
+    }
+    return null
 }
 
 module.exports = { fetchXhsContent, extractNoteId, extractInitialState, normalizeNote, expandExternalShortUrl }

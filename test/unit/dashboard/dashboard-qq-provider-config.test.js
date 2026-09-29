@@ -12,6 +12,7 @@ function createStub() {
     let generation = 7
     let secretConfigured = false
     let tokenConfigured = false
+    let xiaohongshuCookieConfigured = false
     const config = {
         service: {
             lastReloadResult: null,
@@ -35,6 +36,7 @@ function createStub() {
                 wsUrl: 'ws://localhost:3001',
                 wsTokenConfigured: tokenConfigured,
                 qqOfficialClientSecretConfigured: secretConfigured,
+                xiaohongshuCookieConfigured,
                 generation
             }
         },
@@ -60,6 +62,12 @@ function createStub() {
             }
             if (operations.some((operation) => operation.path.join('.') === 'qq.napcat.wsToken' && operation.op === 'clear-secret')) {
                 tokenConfigured = false
+            }
+            if (operations.some((operation) => operation.path.join('.') === 'externalParsers.xiaohongshu.cookie' && operation.op === 'set')) {
+                xiaohongshuCookieConfigured = true
+            }
+            if (operations.some((operation) => operation.path.join('.') === 'externalParsers.xiaohongshu.cookie' && operation.op === 'clear-secret')) {
+                xiaohongshuCookieConfigured = false
             }
             generation += 1
             return {
@@ -186,6 +194,33 @@ describe('dashboard config v1 API', () => {
         assert.strictEqual(cleared.status, 200)
         assert.strictEqual(cleared.body.config.wsTokenConfigured, false)
         assert.ok(stub.calls[2].operations.some((operation) => operation.op === 'clear-secret' && operation.path.join('.') === 'qq.napcat.wsToken'))
+    })
+
+    it('支持小红书 Cookie 登录态配置且响应不回显 Cookie', async () => {
+        const stub = createStub()
+        const cookie = 'a1=fixture-cookie; web_session=fixture-session'
+
+        const configured = await request(createApp(stub))
+            .post('/api/config')
+            .send({ expectedGeneration: 7, xiaohongshuCookie: cookie })
+
+        assert.strictEqual(configured.status, 200)
+        assert.strictEqual(configured.body.config.xiaohongshuCookieConfigured, true)
+        assert.ok(!JSON.stringify(configured.body).includes(cookie))
+        assert.ok(stub.calls[0].operations.some((operation) => operation.path.join('.') === 'externalParsers.xiaohongshu.cookie'))
+
+        const unchanged = await request(createApp(stub))
+            .post('/api/config')
+            .send({ expectedGeneration: 8, xiaohongshuCookie: '' })
+        assert.strictEqual(unchanged.status, 400)
+        assert.strictEqual(unchanged.body.code, 'CONFIG_PATCH_EMPTY')
+
+        const cleared = await request(createApp(stub))
+            .post('/api/config')
+            .send({ expectedGeneration: 8, secretActions: { xiaohongshuCookie: 'clear' } })
+        assert.strictEqual(cleared.status, 200)
+        assert.strictEqual(cleared.body.config.xiaohongshuCookieConfigured, false)
+        assert.ok(stub.calls[1].operations.some((operation) => operation.op === 'clear-secret' && operation.path.join('.') === 'externalParsers.xiaohongshu.cookie'))
     })
 
     it('returns a redacted 409 conflict and rejects missing generation', async () => {

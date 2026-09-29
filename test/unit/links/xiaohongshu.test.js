@@ -170,6 +170,20 @@ describe('xhs extractNoteId', function () {
     it('无法提取时返回 null', function () {
         assert.strictEqual(extractNoteId('https://www.xiaohongshu.com/explore/notanoteid'), null)
     })
+
+    it('从 login redirectPath 提取编码后的 discovery URL', function () {
+        const target = `https://www.xiaohongshu.com/discovery/item/${NOTE_ID}?xsec_token=TOKEN&xsec_source=pc`
+        const loginUrl = `https://www.xiaohongshu.com/login?redirectPath=${encodeURIComponent(target)}`
+        assert.deepStrictEqual(extractNoteId(loginUrl), {
+            noteId: NOTE_ID,
+            queryString: '?xsec_token=TOKEN&xsec_source=pc'
+        })
+    })
+
+    it('非法 redirectPath 返回 null', function () {
+        const loginUrl = `https://www.xiaohongshu.com/login?redirectPath=${encodeURIComponent('https://example.com/not-xhs')}`
+        assert.strictEqual(extractNoteId(loginUrl), null)
+    })
 })
 
 describe('xhsNote handler', function () {

@@ -11,6 +11,7 @@ import SubscriptionsTab from './groups/components/tabs/SubscriptionsTab';
 import PermissionsTab from './groups/components/tabs/PermissionsTab';
 import SyncTab from './groups/components/tabs/SyncTab';
 import VideoDownloadTab from './groups/components/tabs/VideoDownloadTab';
+import ExternalParserTab from './groups/components/tabs/ExternalParserTab';
 import { AT_ALL_CATEGORY_ITEMS } from './groups/constants/atAll';
 import { GROUP_TAB_CATEGORIES } from './groups/constants/tabs';
 import useActionLock from './groups/hooks/useActionLock';
@@ -258,6 +259,7 @@ function Groups() {
                   actionLoading={actionLoading}
                   onResetVideoDownloadConfig={resetVideoDownloadConfig}
                 />
+                <ExternalParserTab formData={formData} setFormData={setFormData} />
               </ModernTabs>
             </GlassCard>
           ) : (
