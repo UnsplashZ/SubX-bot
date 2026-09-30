@@ -132,8 +132,6 @@ jobs:
     needs: build-push
     permissions:
       contents: write
-      # 版本提交若包含 workflow 变更，创建指向该提交的 git tag 也需要此权限
-      workflows: write
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -198,7 +196,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "${tag}" -m "Release ${tag}"
-          git push origin "${tag}"
+          # 镜像已推送成功；若提交包含 workflow 变更，GITHUB_TOKEN 无 workflows
+          # 权限会导致 tag 推送被拒，此时降级为告警，由维护者手动补打 tag。
+          if ! git push origin "${tag}"; then
+            echo "::warning::Failed to push tag ${tag} (commit likely modifies workflow files; GITHUB_TOKEN lacks the workflows scope). Please create it manually: git tag -a ${tag} -m 'Release ${tag}' ${current_commit} && git push origin ${tag}"
+            exit 0
+          fi
           echo "Created and pushed tag ${tag}"
 
   release:
