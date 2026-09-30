@@ -247,6 +247,9 @@ const CONFIG_SCHEMA = objectNode({
         }),
         xiaohongshu: objectNode({
             enabled: booleanNode(false, { effects: ['externalParsers'] }),
+            downloadEnabled: booleanNode(true, { effects: ['externalParsers'] }),
+            downloadMaxDurationSeconds: integerNode(120, { minimum: 0, maximum: 600, effects: ['externalParsers'] }),
+            downloadMaxFileSizeMB: integerNode(50, { minimum: 1, maximum: 500, effects: ['externalParsers'] }),
             // Dashboard 只暴露 configured 状态，抓取请求使用此 Cookie 但不会写入日志。
             cookie: stringNode('', { secret: true, effects: ['externalParsers'] }),
         }),
@@ -317,6 +320,7 @@ const FLAT_KEY_TO_PATH = Object.freeze({
     douyinEnabled: ['externalParsers', 'douyin', 'enabled'],
     douyinDownloadEnabled: ['externalParsers', 'douyin', 'downloadEnabled'],
     xiaohongshuEnabled: ['externalParsers', 'xiaohongshu', 'enabled'],
+    xiaohongshuDownloadEnabled: ['externalParsers', 'xiaohongshu', 'downloadEnabled'],
     xiaohongshuCookie: ['externalParsers', 'xiaohongshu', 'cookie'],
     // 整节点暴露，供 config.externalParsers?.douyin?.enabled 嵌套访问
     externalParsers: ['externalParsers'],

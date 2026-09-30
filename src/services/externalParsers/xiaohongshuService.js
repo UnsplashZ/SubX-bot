@@ -8,6 +8,13 @@ const { expandExternalShortUrl } = require('./externalShortLinkExpander')
 const IOS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
 const PC_UA  = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
+function normalizeQuerySeparators(value) {
+    const text = String(value || '').trim()
+    const queryStart = text.indexOf('?')
+    if (queryStart < 0) return text
+    return `${text.slice(0, queryStart)}${text.slice(queryStart).replace(/\\&/g, '&')}`
+}
+
 function fetchHtml(url, headers) {
     return new Promise((resolve, reject) => {
         const req = https.get(url, { headers, timeout: 12000 }, (res) => {
@@ -43,9 +50,16 @@ function buildHeaders(baseHeaders = {}) {
 }
 
 function extractInitialState(html) {
-    const m = html.match(/window\.__INITIAL_STATE__=(.*?)<\/script>/)
+    const m = html.match(/window\.__INITIAL_STATE__\s*=\s*(.*?)<\/script>/s)
     if (!m) throw new Error('xhs: window.__INITIAL_STATE__ not found')
-    const raw = m[1].replace(/undefined/g, 'null')
+    // 小红书页面把部分非 JSON 值直接序列化进状态脚本（目前常见的是
+    // undefined 和空 Map）。这些值不影响 note 数据，先转换为 JSON 等价物。
+    const raw = m[1]
+        .replace(/;\s*$/, '')
+        .replace(/\bundefined\b/g, 'null')
+        .replace(/\bNaN\b|\bInfinity\b/g, 'null')
+        .replace(/new\s+(?:Map|Set)\(\s*\[\s*\]\s*\)/g, '{}')
+        .replace(/new\s+(?:Map|Set)\(\s*\)/g, '{}')
     try {
         return JSON.parse(raw)
     } catch (e) {
@@ -62,8 +76,9 @@ async function parseExplore(noteId, queryString) {
     }))
     const state = extractInitialState(html)
     const wrapper = state?.note?.noteDetailMap?.[noteId]
-    if (!wrapper?.note) throw new Error(`xhs explore: note ${noteId} not found in state`)
-    return { state, note: wrapper.note, path: 'explore' }
+    const note = wrapper?.note || (wrapper?.noteId ? wrapper : null)
+    if (!note) throw new Error(`xhs explore: note ${noteId} not found in state`)
+    return { state, note, path: 'explore' }
 }
 
 // Discovery 回退路径（iOS UA + 额外请求头）
@@ -78,7 +93,13 @@ async function parseDiscovery(noteId, queryString) {
         'Sec-Fetch-Dest': 'empty',
     }))
     const state = extractInitialState(html)
-    const note = state?.noteData?.data?.noteData
+    // 页面版本之间曾出现过 noteData.data.noteData、noteData.data.note
+    // 和 noteData.noteData 三种形态，按完整度从高到低尝试。
+    const data = state?.noteData?.data
+    const note = data?.noteData
+        || data?.note
+        || (data?.noteId || data?.id || data?.type ? data : null)
+        || state?.noteData?.noteData
     if (!note) throw new Error('xhs discovery: noteData not found in state')
     const preload = state?.noteData?.normalNotePreloadData || null
     return { state, note, preload, path: 'discovery' }
@@ -86,24 +107,64 @@ async function parseDiscovery(noteId, queryString) {
 
 // 从 Video.media.stream 提取最优播放 URL（h265 无水印优先）
 function extractVideoUrl(video) {
-    const stream = video?.media?.stream
-    if (!stream) return { url: null, duration: 0 }
-    for (const codec of ['h265', 'h264', 'av1', 'h266']) {
-        const items = stream[codec]
-        if (Array.isArray(items) && items.length > 0) {
-            return {
-                url: items[0].masterUrl,
-                duration: Math.floor((items[0].duration || 0) / 1000),
+    const candidates = []
+    const addUrl = (value) => {
+        if (typeof value === 'string' && value.trim()) return value.trim()
+        if (value && typeof value === 'object') {
+            return addUrl(value.url || value.masterUrl || value.master_url || value.playUrl || value.play_url)
+        }
+        return null
+    }
+    const addItem = (item) => {
+        if (!item || typeof item !== 'object') return
+        const urls = [
+            item.masterUrl,
+            item.master_url,
+            item.url,
+            item.playUrl,
+            item.play_url,
+            ...(Array.isArray(item.urlList) ? item.urlList : []),
+            ...(Array.isArray(item.url_list) ? item.url_list : []),
+            ...(Array.isArray(item.backupUrls) ? item.backupUrls : []),
+            ...(Array.isArray(item.backup_urls) ? item.backup_urls : []),
+        ]
+        for (const url of urls) {
+            const normalizedUrl = addUrl(url)
+            if (normalizedUrl) {
+                candidates.push({
+                    url: normalizedUrl,
+                    duration: item.duration ?? item.videoDuration ?? item.durationMs,
+                })
             }
         }
     }
-    return { url: null, duration: 0 }
+
+    const mediaSources = [video, video?.media, video?.mediaV2, video?.media?.video, video?.mediaV2?.video]
+    for (const source of mediaSources) {
+        const stream = source?.stream
+        for (const codec of ['h265', 'h264', 'av1', 'h266']) {
+            const items = stream?.[codec]
+            if (Array.isArray(items)) items.forEach(addItem)
+        }
+    }
+    addItem(video?.media)
+    addItem(video)
+
+    const selected = candidates[0]
+    if (!selected) return { url: null, duration: 0 }
+    const duration = Number(selected.duration || video?.duration || video?.videoDuration || video?.media?.duration || 0)
+    return {
+        url: selected.url,
+        duration: Math.floor(duration > 1000 ? duration / 1000 : duration),
+    }
 }
 
 // 小红书返回的图床地址部分是 http://（sns-webpic-qc.xhscdn.com），
 // 投递侧用 https 抓取，这里统一升级为 https（CDN 双协议可用）
 function toHttpsUrl(url) {
-    return typeof url === 'string' && url.startsWith('http://')
+    if (typeof url !== 'string') return url
+    if (url.startsWith('//')) return `https:${url}`
+    return url.startsWith('http://')
         ? `https://${url.slice('http://'.length)}`
         : url
 }
@@ -157,7 +218,7 @@ async function fetchXhsContent(noteId, queryString = '') {
 function extractDirectNoteId(value) {
     if (typeof value !== 'string' || !value.trim()) return null
     try {
-        const parsed = new URL(value.trim(), 'https://www.xiaohongshu.com')
+        const parsed = new URL(normalizeQuerySeparators(value), 'https://www.xiaohongshu.com')
         const match = parsed.pathname.match(/\/(?:explore|discovery\/item)\/([0-9a-f]{24})\/?$/i)
         if (!match) return null
         return { noteId: match[1], queryString: parsed.search || '' }
@@ -192,4 +253,4 @@ function extractNoteId(url, depth = 0) {
     return null
 }
 
-module.exports = { fetchXhsContent, extractNoteId, extractInitialState, normalizeNote, expandExternalShortUrl }
+module.exports = { fetchXhsContent, extractNoteId, extractInitialState, normalizeNote, extractVideoUrl, expandExternalShortUrl }

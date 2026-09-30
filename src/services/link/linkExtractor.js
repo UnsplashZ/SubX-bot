@@ -7,6 +7,13 @@ const { parseRegexToken } = require('./regexLinkParser')
 
 const MAX_MESSAGE_LENGTH = 10000
 
+function normalizeMarkdownLinks(message) {
+    // Markdown 标签可能包含空格，先替换成真实目标 URL，再交给 token 解析器。
+    return message.replace(/\[[^\]]*\]\(\s*(<[^>]+>|https?:\/\/[^\s)]+)\s*\)/gi, (_match, target) =>
+        target.replace(/^<|>$/g, '')
+    )
+}
+
 function getScope(traceContext = null) {
     return traceContext?.scope || ''
 }
@@ -81,7 +88,7 @@ function extractLinksFromMessage(rawMessage, groupId, traceContext = null) {
     }
 
     const links = []
-    const tokenInfos = rawMessage
+    const tokenInfos = normalizeMarkdownLinks(rawMessage)
         .split(/\s+/)
         .map((token) => buildTokenInfo(token))
         .filter(Boolean)

@@ -77,6 +77,12 @@
 - If a feature requires NapCat interfaces, first consult `docs/napcat_interface/llms.txt`.
 - Use that index file to locate the corresponding interface documentation link and details.
 
+## External Platform Parsing Rule
+
+- Douyin/Xiaohongshu parsing is implemented entirely on the Node side under `src/services/externalParsers/` and does not go through the Python Bilibili service.
+- When adding or modifying external platform support, reuse `src/services/externalParsers/`, the `src/services/link/linkTypes/` handlers, and `src/services/externalMediaDeliveryService.js` for media delivery instead of introducing parallel pipelines.
+- External platform secrets (such as the Xiaohongshu cookie) are schema `secret: true` fields and must never be logged or exposed outside the configured-marker projection.
+
 ## Review Quality & Reliability Rule
 
 - For any review request, prioritize code quality and runtime reliability over style suggestions.

@@ -1255,6 +1255,10 @@ function generateCSS(colorData, viewport, options = {}) {
                 cursor: pointer;
             }
 
+            .external-link {
+                overflow-wrap: anywhere;
+            }
+
             .rt-link-inline {
                 display: inline;
                 color: var(--color-secondary);
@@ -1814,6 +1818,9 @@ function generateCSS(colorData, viewport, options = {}) {
             .user-signature {
                 font-size: 20px;
                 color: var(--color-subtext);
+                line-height: 1.35;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
             }
 
             /* 图集 2×2 网格（抖音图集 / Live Photo / 小红书笔记共用） */

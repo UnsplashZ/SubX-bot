@@ -1,7 +1,7 @@
 'use strict'
 
 const { escapeHtml, formatPubTime, formatDuration } = require('../core/formatters')
-const { parseRichText } = require('./components/richtext')
+const { renderExternalRichText } = require('./components/richtext')
 
 // 小红书预览卡渲染器：品牌标记"小红书"，图文笔记含 2×2 缩略图网格
 function renderXhsVideoContent(data, emojiContext = null) {
@@ -26,7 +26,7 @@ function renderXhsVideoContent(data, emojiContext = null) {
                     </div>
                 </div>
             </div>
-            <div class="title" data-layout-key="title">${parseRichText(null, info.title || '', emojiContext)}</div>
+            <div class="title" data-layout-key="title">${renderExternalRichText(info.title || '', emojiContext)}</div>
         </div>
     `
 }
@@ -56,8 +56,8 @@ function renderXhsNoteContent(data, emojiContext = null) {
                     </div>
                 </div>
             </div>
-            <div class="title">${parseRichText(null, info.title || '', emojiContext)}</div>
-            ${desc ? `<div class="text-content xhs-desc">${parseRichText(null, desc, emojiContext)}</div>` : ''}
+            <div class="title">${renderExternalRichText(info.title || '', emojiContext)}</div>
+            ${desc ? `<div class="text-content xhs-desc">${renderExternalRichText(desc, emojiContext)}</div>` : ''}
             <div class="note-image-grid">
                 ${imageGrid}
                 ${remaining > 0 ? `<div class="note-more">+${remaining}</div>` : ''}

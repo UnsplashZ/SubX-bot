@@ -6,9 +6,12 @@ const linkHandler = require('../../../src/handlers/linkHandler')
 const {
     extractInitialState,
     normalizeNote,
+    extractVideoUrl,
     extractNoteId,
 } = require('../../../src/services/externalParsers/xiaohongshuService')
 const xhsNoteHandler = require('../../../src/services/link/linkTypes/xhsNote')
+const externalMediaDelivery = require('../../../src/services/externalMediaDeliveryService')
+const config = require('../../../src/config')
 
 const NOTE_ID = '68feefe40000000007030c4a'
 
@@ -22,6 +25,27 @@ describe('xiaohongshu link extraction', function () {
         assert.ok(note, '应解析出 xhs_note')
         assert.strictEqual(note.id, NOTE_ID)
         assert.strictEqual(note.meta.queryString, '?xsec_token=ABCD1234&xsec_source=pc_share')
+    })
+
+    it('兼容分享文本中的转义查询分隔符', function () {
+        const links = linkHandler.extractLinks(
+            `https://www.xiaohongshu.com/explore/${NOTE_ID}?xsec_token=ABCD1234\\&xsec_source=pc_share`,
+            '10001'
+        )
+        const note = links.find((l) => l.type === 'xhs_note')
+        assert.ok(note)
+        assert.strictEqual(note.meta.queryString, '?xsec_token=ABCD1234&xsec_source=pc_share')
+    })
+
+    it('从完整 Markdown 链接中提取真实目标 URL', function () {
+        const links = linkHandler.extractLinks(
+            `[查看小红书笔记](https://www.xiaohongshu.com/explore/${NOTE_ID}?xsec_token=TOKEN\\&xsec_source=pc_feed)`,
+            '10001'
+        )
+        const note = links.find((l) => l.type === 'xhs_note')
+        assert.ok(note)
+        assert.strictEqual(note.id, NOTE_ID)
+        assert.strictEqual(note.meta.queryString, '?xsec_token=TOKEN&xsec_source=pc_feed')
     })
 
     it('识别 discovery/item 长链', function () {
@@ -59,6 +83,17 @@ describe('xhs extractInitialState', function () {
         const state = extractInitialState(html)
         assert.strictEqual(state.note.noteDetailMap[NOTE_ID].note.title, 'hello')
         assert.strictEqual(state.user, null)
+    })
+
+    it('解析含空 Map 和换行的 INITIAL STATE', function () {
+        const html = `<script>window.__INITIAL_STATE__ = {
+            "note": {"noteDetailMap": {}},
+            "tailMap": new Map([]),
+            "extra": new Set()
+        };</script>`
+        const state = extractInitialState(html)
+        assert.deepStrictEqual(state.tailMap, {})
+        assert.deepStrictEqual(state.extra, {})
     })
 
     it('缺少 INITIAL STATE 时抛错', function () {
@@ -149,6 +184,48 @@ describe('xhs normalizeNote', function () {
         assert.strictEqual(data.video_url, null)
         assert.strictEqual(data.video_duration, 0)
     })
+
+    it('兼容视频流使用 urlList / play_url 字段', function () {
+        const result = extractVideoUrl({
+            media: {
+                stream: {
+                    h264: [{
+                        urlList: ['https://example.com/fallback.mp4'],
+                        duration: 31,
+                    }],
+                },
+            },
+        })
+        assert.strictEqual(result.url, 'https://example.com/fallback.mp4')
+        assert.strictEqual(result.duration, 31)
+
+        const alternate = extractVideoUrl({
+            media: { play_url: 'https://example.com/play.mp4', duration: 32000 },
+        })
+        assert.strictEqual(alternate.url, 'https://example.com/play.mp4')
+        assert.strictEqual(alternate.duration, 32)
+    })
+
+    it('兼容 mediaV2、对象形式备用地址和协议相对地址', function () {
+        const result = extractVideoUrl({
+            mediaV2: {
+                stream: {
+                    h264: [{
+                        urlList: [{ url: '//cdn.example.com/video.mp4' }],
+                        videoDuration: 1500,
+                    }],
+                },
+            },
+        })
+        assert.strictEqual(result.url, '//cdn.example.com/video.mp4')
+        assert.strictEqual(result.duration, 1)
+        assert.strictEqual(normalizeNote({
+            noteId: NOTE_ID,
+            type: 'video',
+            video: { media: { stream: {} } },
+            imageList: [],
+        }, 'discovery').video_url, null)
+    })
 })
 
 describe('xhs extractNoteId', function () {
@@ -160,6 +237,11 @@ describe('xhs extractNoteId', function () {
     it('从 discovery URL 提取 noteId + queryString', function () {
         const result = extractNoteId(`https://www.xiaohongshu.com/discovery/item/${NOTE_ID}?xsec_token=TOKEN`)
         assert.deepStrictEqual(result, { noteId: NOTE_ID, queryString: '?xsec_token=TOKEN' })
+    })
+
+    it('extractNoteId 兼容转义查询分隔符', function () {
+        const result = extractNoteId(`https://www.xiaohongshu.com/explore/${NOTE_ID}?xsec_token=TOKEN\\&xsec_source=pc`)
+        assert.deepStrictEqual(result, { noteId: NOTE_ID, queryString: '?xsec_token=TOKEN&xsec_source=pc' })
     })
 
     it('无 query string 的链接也能提取（queryString 为空串）', function () {
@@ -187,6 +269,15 @@ describe('xhs extractNoteId', function () {
 })
 
 describe('xhsNote handler', function () {
+    const compatState = config.__getMutableCompatStateForTests()
+    const originalExternalParsers = structuredClone(compatState.externalParsers)
+    const originalDownloadAndSend = externalMediaDelivery.downloadAndSend
+
+    afterEach(function () {
+        compatState.externalParsers = structuredClone(originalExternalParsers)
+        externalMediaDelivery.downloadAndSend = originalDownloadAndSend
+    })
+
     it('平台未开启时 fetch 返回 disabled', async function () {
         const descriptor = { id: NOTE_ID, type: 'xhs_note', meta: {} }
         const info = await xhsNoteHandler.fetch('10001', descriptor)
@@ -210,5 +301,71 @@ describe('xhsNote handler', function () {
 
     it('getCacheIdentity 返回 note_id', function () {
         assert.strictEqual(xhsNoteHandler.getCacheIdentity({ id: NOTE_ID }), NOTE_ID)
+    })
+
+    it('视频预览发送后自动下载并携带小红书请求头', async function () {
+        compatState.externalParsers.xiaohongshu.enabled = true
+        compatState.externalParsers.xiaohongshu.downloadEnabled = true
+        compatState.externalParsers.xiaohongshu.cookie = 'a=1; b=2'
+        const calls = []
+        externalMediaDelivery.downloadAndSend = async (options) => {
+            calls.push(options)
+            return true
+        }
+
+        await xhsNoteHandler.afterSend({
+            ws: { name: 'socket' },
+            groupId: '10001',
+            info: {
+                data: {
+                    type: 'xhs_video',
+                    note_id: NOTE_ID,
+                    title: '视频标题',
+                    video_url: 'https://example.com/video.mp4',
+                    video_duration: 42,
+                    author: { name: '作者' },
+                },
+            },
+        })
+
+        assert.strictEqual(calls.length, 1)
+        assert.strictEqual(calls[0].url, 'https://example.com/video.mp4')
+        assert.strictEqual(calls[0].durationSeconds, 42)
+        assert.strictEqual(calls[0].maxDurationSeconds, 120)
+        assert.strictEqual(calls[0].maxFileSizeBytes, 50 * 1024 * 1024)
+        assert.deepStrictEqual(calls[0].requestHeaders, {
+            Referer: 'https://www.xiaohongshu.com/',
+            Cookie: 'a=1; b=2',
+        })
+    })
+
+    it('关闭下载开关或缺少视频地址时跳过投递', async function () {
+        compatState.externalParsers.xiaohongshu.downloadEnabled = false
+        let callCount = 0
+        externalMediaDelivery.downloadAndSend = async () => { callCount += 1 }
+
+        const context = {
+            ws: {},
+            groupId: '10001',
+            info: { data: { type: 'xhs_video', video_url: 'https://example.com/video.mp4' } },
+        }
+        await xhsNoteHandler.afterSend(context)
+        await xhsNoteHandler.afterSend({
+            ...context,
+            info: { data: { type: 'xhs_video', video_url: null } },
+        })
+        assert.strictEqual(callCount, 0)
+    })
+
+    it('下载异常只记录日志，不阻断链接处理', async function () {
+        compatState.externalParsers.xiaohongshu.downloadEnabled = true
+        externalMediaDelivery.downloadAndSend = async () => {
+            throw new Error('HTTP 403')
+        }
+        await assert.doesNotReject(() => xhsNoteHandler.afterSend({
+            ws: {},
+            groupId: '10001',
+            info: { data: { type: 'xhs_video', note_id: NOTE_ID, video_url: 'https://example.com/video.mp4' } },
+        }))
     })
 })

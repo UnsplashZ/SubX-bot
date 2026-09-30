@@ -64,7 +64,7 @@ function scheduleFileCleanup(filePath) {
 // 播放地址可能返回 302 跳转 CDN（如 aweme.snssdk.com → douyinvod.com），需跟随重定向
 // 抖音 CDN 偶发 stall（连接不断但无数据），触发 60s 超时时整体重试一次（从原 URL 重新下载，
 // 不做 Range 续传，保持简单），避免单次抖动导致投递失败。
-async function streamDownload(url, destPath, maxBytes, redirectsLeft = 3, retriesLeft = 1) {
+async function streamDownload(url, destPath, maxBytes, redirectsLeft = 3, retriesLeft = 1, requestHeaders = {}) {
     return new Promise((resolve, reject) => {
         const tmpPath = destPath + '.tmp'
         const file = fs.createWriteStream(tmpPath)
@@ -74,7 +74,8 @@ async function streamDownload(url, destPath, maxBytes, redirectsLeft = 3, retrie
 
         const req = https.get(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                ...requestHeaders
             },
             timeout: 60000,
         }, (res) => {
@@ -87,7 +88,15 @@ async function streamDownload(url, destPath, maxBytes, redirectsLeft = 3, retrie
                     return
                 }
                 const nextUrl = toHttps(new URL(res.headers.location, url).href)
-                streamDownload(nextUrl, destPath, maxBytes, redirectsLeft - 1, retriesLeft).then(resolve, reject)
+                streamDownload(nextUrl, destPath, maxBytes, redirectsLeft - 1, retriesLeft, requestHeaders).then(resolve, reject)
+                return
+            }
+
+            if (res.statusCode >= 400) {
+                res.resume()
+                file.destroy()
+                cleanupTmp()
+                reject(new Error(`external media HTTP ${res.statusCode}`))
                 return
             }
 
@@ -126,7 +135,7 @@ async function streamDownload(url, destPath, maxBytes, redirectsLeft = 3, retrie
                 logger.logEvent('warn', 'SEND', '', 'external-download-retry', {
                     url: url.slice(0, 80), error: String(err.message || err), retriesLeft
                 })
-                streamDownload(url, destPath, maxBytes, redirectsLeft, retriesLeft - 1).then(resolve, reject)
+                streamDownload(url, destPath, maxBytes, redirectsLeft, retriesLeft - 1, requestHeaders).then(resolve, reject)
                 return
             }
             reject(err)
@@ -154,7 +163,7 @@ async function deliverVideoFile(ws, groupId, filePath, label, author) {
 // 否则超长视频会在下载完成后才失败，浪费带宽和磁盘。
 // durationSeconds 由 afterSend 调用方从 data.duration 取得并传入。
 async function downloadAndSend({ ws, groupId, url, label, author, platform,
-    durationSeconds, maxDurationSeconds, maxFileSizeBytes }) {
+    durationSeconds, maxDurationSeconds, maxFileSizeBytes, requestHeaders }) {
     // 时长预检（仿照 videoDownloadService 的模式）
     if (maxDurationSeconds > 0 && durationSeconds > 0 && durationSeconds > maxDurationSeconds) {
         const durMin = Math.round(durationSeconds / 60)
@@ -179,7 +188,7 @@ async function downloadAndSend({ ws, groupId, url, label, author, platform,
     const filePath = path.join(dir, filename)
 
     try {
-        await streamDownload(url, filePath, maxFileSizeBytes ?? 50 * 1024 * 1024)
+        await streamDownload(url, filePath, maxFileSizeBytes ?? 50 * 1024 * 1024, 3, 1, requestHeaders)
         const sent = await deliverVideoFile(ws, groupId, filePath, label, author || platform)
 
         // 发送后延迟 5 分钟清理

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SubX Bot (formerly Bili QQ Bot) is a Node.js + Python hybrid application that connects QQ groups to Bilibili content via an OneBot v11-compatible service (LLBot by default; NapCat and other OneBot services are also supported) or the QQ Official bot OpenAPI provider. It parses Bilibili URLs, generates preview cards using Puppeteer, and supports subscription monitoring.
+SubX Bot (formerly Bili QQ Bot) is a Node.js + Python hybrid application that connects QQ groups to Bilibili content via an OneBot v11-compatible service (LLBot by default; NapCat and other OneBot services are also supported) or the QQ Official bot OpenAPI provider. It parses Bilibili URLs plus external platform links (Douyin and Xiaohongshu), generates preview cards using Puppeteer, and supports subscription monitoring.
 
 **Tech Stack:** Node.js 22.12+, Python 3.10+, Express 5, WebSocket, Puppeteer, bilibili-api-python 17.4.2
 
@@ -22,6 +22,8 @@ SubX-bot/
 │   │   ├── bili_server_core/ # Python API backend
 │   │   ├── bili_server.py   # Python compatibility entry
 │   │   ├── imageGenerator/  # Preview card rendering and generation
+│   │   ├── externalParsers/ # External platform fetch/parsing (Douyin, Xiaohongshu)
+│   │   ├── externalMediaDeliveryService.js # Async external video download and delivery
 │   │   ├── previewLayout/   # Legacy patch-based layout overrides (data-layout-key); validation/migration/fallback path
 │   │   ├── previewTemplate/ # Authoritative template-based layout engine (data-template-node-id); applied at render time (the /preview-layout dashboard editor was removed)
 │   │   └── subscription/    # Subscription service and update checker
@@ -235,6 +237,12 @@ The Python implementation under `/src/services/bili_server_core/` is the Bilibil
 - `/src/services/imageGenerator/renderers/` — content-type HTML renderers
 - `/src/services/imageGenerator/generators/previewCard.js` — type-to-renderer preview assembly
 
+#### External platform parsing and delivery
+- `/src/services/externalParsers/` — Douyin/Xiaohongshu fetch and HTML-state parsing
+- `/src/services/externalMediaDeliveryService.js` — async external video download/streaming delivery
+- `/src/services/link/linkTypes/douyinVideo.js` / `xhsNote.js` — external link types with `afterSend` media delivery
+- `/src/services/imageGenerator/renderers/components/richtext.js` — `renderExternalRichText()` for `#话题#` / `@用户` / URLs
+
 #### Dashboard backend and frontend
 - `/src/dashboard/server.js` — Express host and static asset serving
 - `/src/dashboard/routes/api/index.js` — dashboard API composition root
@@ -336,7 +344,7 @@ When a message arrives from QQ, `messageHandler.js` processes it in this order:
    - Return early when a command fully handles the message
 
 3. **Link processing**:
-   - Extract supported Bilibili URLs from the remaining message text
+   - Extract supported links (Bilibili plus external platforms such as Douyin/Xiaohongshu) from the remaining message text
    - Apply link cache checks (`linkCacheTimeout`)
    - Fetch normalized data through `BiliApi` → Python service
    - Generate preview images through `ImageGenerator`
@@ -368,6 +376,36 @@ For a new Bilibili content type, keep the chain aligned instead of following a f
 5. Only add Dashboard or subscription handling if that content type actually needs those entry points
 
 The important part is that the Node side continues to consume a normalized `type + data` result instead of duplicating Bilibili-specific parsing in multiple places. `src/handlers/linkHandler.js` is now a compatibility facade, not the primary extension point for new link types.
+
+## External Platform Content (Douyin / Xiaohongshu)
+
+External platform links are parsed entirely on the Node side (no Python service involvement) and flow through the same preview card pipeline as Bilibili content.
+
+### Supported URL Patterns
+
+| Type | Pattern | Notes |
+|------|---------|-------|
+| Douyin video | `douyin.com/video/<id>`, `v.douyin.com/<code>` | Short links auto-expand |
+| Douyin note / gallery / Live Photo | `douyin.com/note/<id>` | 2×2 thumbnail grid card |
+| Xiaohongshu note | `xiaohongshu.com/explore/<id>`, `xiaohongshu.com/discovery/item/<id>`, `xhslink.com/<code>` | Explore page first, discovery fallback |
+
+### Implementation Notes
+
+- Fetching/parsing lives in `/src/services/externalParsers/` (`douyinService.js`, `xiaohongshuService.js`, `externalShortLinkExpander.js`); link type handlers live in `/src/services/link/linkTypes/` (`douyinVideo.js`, `douyinNote.js`, `douyinShort.js`, `xhsNote.js`, `xhsShort.js`)
+- Xiaohongshu parses `window.__INITIAL_STATE__` from the note HTML; the state script can contain non-JSON values (`undefined`, `NaN`, `Infinity`, empty `Map`/`Set`), which are normalized to JSON equivalents before parsing, and both explore and discovery state layouts are tried by completeness
+- Douyin/Xiaohongshu descriptions are plain text, not Bilibili rich-text nodes; `renderExternalRichText()` in `imageGenerator/renderers/components/richtext.js` renders `#话题#`, `@用户`, and URLs as styled spans without producing executable HTML
+- `linkExtractor.js` normalizes Markdown links (`[text](url)`) and escaped query separators (`\&`) before token parsing, so external links sent in Markdown form are still recognized
+- Video download for external platforms reuses `/src/services/externalMediaDeliveryService.js` (stream download with redirect following, duration pre-check, size cap, delayed cleanup); link type `afterSend` hooks pass platform `Referer`/`Cookie` headers
+
+### External Parser Configuration
+
+`externalParsers.douyin` and `externalParsers.xiaohongshu` in `/src/config/schemaV1.js` expose:
+
+- `enabled` — global switch for the platform
+- `downloadEnabled` / `downloadMaxDurationSeconds` (default 120) / `downloadMaxFileSizeMB` (default 50) — video download policy
+- `cookie` (Xiaohongshu only) — login state for fetching; marked `secret: true`, never logged, Dashboard shows only a configured marker
+
+Group-level overrides use flat keys `douyinEnabled` / `xiaohongshuEnabled` / `douyinDownloadEnabled` / `xiaohongshuDownloadEnabled`, settable via `/设置 功能 抖音|小红书 <开|关>` or the Dashboard groups page.
 
 ## Command System
 

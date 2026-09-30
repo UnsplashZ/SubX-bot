@@ -1,7 +1,7 @@
 'use strict'
 
 const { escapeHtml, formatPubTime, formatDuration } = require('../core/formatters')
-const { parseRichText } = require('./components/richtext')
+const { renderExternalRichText } = require('./components/richtext')
 
 // 抖音色系：品牌黑底 + 白字，但预览卡颜色由主题层控制，这里只输出内容 HTML
 function renderDouyinVideoContent(data, emojiContext = null) {
@@ -9,7 +9,7 @@ function renderDouyinVideoContent(data, emojiContext = null) {
     const author = info.author || {}
     const face = author.face || ''
     const name = escapeHtml(author.name || 'Unknown')
-    const sig  = author.signature ? `<span class="user-signature">${escapeHtml(author.signature)}</span>` : ''
+    const sig  = author.signature ? `<span class="user-signature">${renderExternalRichText(author.signature, emojiContext)}</span>` : ''
     const dur  = info.duration ? ` • 时长: ${formatDuration(info.duration)}` : ''
 
     return `
@@ -30,7 +30,7 @@ function renderDouyinVideoContent(data, emojiContext = null) {
                     </div>
                 </div>
             </div>
-            <div class="title" data-layout-key="title">${parseRichText(null, info.title || '', emojiContext)}</div>
+            <div class="title" data-layout-key="title">${renderExternalRichText(info.title || '', emojiContext)}</div>
         </div>
     `
 }
@@ -59,7 +59,7 @@ function renderDouyinNoteContent(data, emojiContext = null) {
                     </div>
                 </div>
             </div>
-            <div class="title">${parseRichText(null, info.title || '', emojiContext)}</div>
+            <div class="title">${renderExternalRichText(info.title || '', emojiContext)}</div>
             <div class="note-image-grid">
                 ${imageGrid}
                 ${remaining > 0 ? `<div class="note-more">+${remaining}</div>` : ''}
@@ -91,7 +91,7 @@ function renderDouyinLivePhotoContent(data, emojiContext = null) {
                     </div>
                 </div>
             </div>
-            <div class="title">${parseRichText(null, info.title || '', emojiContext)}</div>
+            <div class="title">${renderExternalRichText(info.title || '', emojiContext)}</div>
             <div class="note-image-grid">
                 ${imageGrid}
                 ${remaining > 0 ? `<div class="note-more">+${remaining}</div>` : ''}

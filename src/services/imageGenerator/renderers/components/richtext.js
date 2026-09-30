@@ -103,6 +103,46 @@ function renderTextWithEmojiFallback(text, emojiContext = null) {
     }).join('')
 }
 
+/**
+ * 渲染抖音 / 小红书的纯文本描述，补齐平台常见的 #话题#、@用户和 URL。
+ * 不解析为可执行 HTML，所有普通文本和属性值都经过现有安全转义流程。
+ */
+function renderExternalRichText(text, emojiContext = null) {
+    const rawText = String(text || '')
+    if (!rawText) return ''
+
+    const tokenPattern = /https?:\/\/[^\s<>"']+|#[^#\r\n]{1,80}#|@[^\s#@，。！？、；：:（）()[\]{}<>]+/gu
+    let cursor = 0
+    let html = ''
+    let match
+
+    while ((match = tokenPattern.exec(rawText))) {
+        const original = match[0]
+        let token = original
+        let trailing = ''
+        if (/^https?:\/\//i.test(token)) {
+            const trailingMatch = token.match(/[。，、！？；：:，,.!?;]+$/u)
+            if (trailingMatch) {
+                trailing = trailingMatch[0]
+                token = token.slice(0, -trailing.length)
+            }
+        }
+
+        html += renderTextWithEmojiFallback(rawText.slice(cursor, match.index), emojiContext)
+        if (/^https?:\/\//i.test(token)) {
+            html += `<span class="rich-link external-link" title="${escapeAttr(token)}">${renderTextWithEmojiFallback(token, emojiContext)}</span>`
+        } else if (token.startsWith('#')) {
+            html += `<span class="topic-tag">${renderTextWithEmojiFallback(token, emojiContext)}</span>`
+        } else {
+            html += `<span class="at-user">${renderTextWithEmojiFallback(token, emojiContext)}</span>`
+        }
+        if (trailing) html += renderTextWithEmojiFallback(trailing, emojiContext)
+        cursor = match.index + original.length
+    }
+
+    return html + renderTextWithEmojiFallback(rawText.slice(cursor), emojiContext)
+}
+
 function renderUnknownNodeText(text, emojiContext = null) {
     const html = renderTextWithEmojiFallback(text, emojiContext)
     if (!html) return ''
@@ -163,5 +203,6 @@ function parseRichText(nodes, rawText, emojiContext = null) {
 }
 
 module.exports = {
-    parseRichText
+    parseRichText,
+    renderExternalRichText
 }

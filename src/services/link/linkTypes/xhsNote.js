@@ -1,6 +1,7 @@
 'use strict'
 
 const { fetchXhsContent } = require('../../externalParsers/xiaohongshuService')
+const externalMediaDelivery = require('../../externalMediaDeliveryService')
 const logger = require('../../../utils/logger')
 const config = require('../../../config')
 
@@ -47,6 +48,37 @@ module.exports = {
 
     resolveCardType(info) {
         return info?.data?.type || 'xhs_note'
+    },
+
+    async afterSend(context) {
+        const data = context.info?.data
+        if (!data || data.type !== 'xhs_video' || !data.video_url) return
+
+        const xhsCfg = config.externalParsers?.xiaohongshu || {}
+        if (!(xhsCfg.downloadEnabled ?? true)) return
+
+        try {
+            await externalMediaDelivery.downloadAndSend({
+                ws: context.ws,
+                groupId: context.groupId,
+                url: data.video_url,
+                label: data.title || '小红书视频',
+                author: data.author?.name,
+                platform: 'xiaohongshu',
+                durationSeconds: data.video_duration ?? 0,
+                maxDurationSeconds: xhsCfg.downloadMaxDurationSeconds ?? 120,
+                maxFileSizeBytes: (xhsCfg.downloadMaxFileSizeMB ?? 50) * 1024 * 1024,
+                requestHeaders: {
+                    Referer: 'https://www.xiaohongshu.com/',
+                    ...(xhsCfg.cookie ? { Cookie: String(xhsCfg.cookie) } : {}),
+                },
+            })
+        } catch (err) {
+            logger.logEvent('error', 'LINK', '', 'xhs-download-failed', {
+                groupId: context.groupId,
+                id: data.note_id,
+                error: String(err.message || err),
+            })
+        }
     }
-    // 小红书视频暂不自动下载（视频通常带平台水印），afterSend 留空
 }

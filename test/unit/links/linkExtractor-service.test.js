@@ -47,4 +47,15 @@ describe('linkExtractor service', function () {
             sourceToken: 'https://www.bilibili.com/space/401742377/dynamic'
         })
     })
+
+    it('将带空格标签的 Markdown 小红书链接解析为目标 URL', function () {
+        const links = extractLinksFromMessage(
+            '[打开这条笔记](https://www.xiaohongshu.com/explore/68feefe40000000007030c4a?xsec_token=TOKEN\\&xsec_source=pc_feed)',
+            '10001'
+        )
+
+        assert.strictEqual(links.length, 1)
+        assert.strictEqual(links[0].type, 'xhs_note')
+        assert.strictEqual(links[0].meta.queryString, '?xsec_token=TOKEN&xsec_source=pc_feed')
+    })
 })

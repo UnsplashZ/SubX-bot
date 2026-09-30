@@ -6,7 +6,15 @@ const EXTERNAL_DOMAINS = [
 ]
 
 function normalizeUrlToken(token) {
-    return String(token || '')
+    const rawToken = String(token || '').trim()
+    const markdownMatch = rawToken.match(/^\[[\s\S]*?\]\(\s*(<[^>]+>|[^\s)]+)\s*\)$/)
+    const urlToken = markdownMatch ? markdownMatch[1].replace(/^<|>$/g, '') : rawToken
+    const queryStart = urlToken.indexOf('?')
+    const normalizedQuery = queryStart >= 0
+        ? `${urlToken.slice(0, queryStart)}${urlToken.slice(queryStart).replace(/\\&/g, '&')}`
+        : urlToken
+
+    return normalizedQuery
         .trim()
         .replace(/^[("'“‘（【《「『<]+/g, '')
         .replace(/[)"'”’）】》」』>。,，！!？?；;:：]+$/g, '')
