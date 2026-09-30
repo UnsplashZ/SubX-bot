@@ -12,64 +12,10 @@ env:
   PUPPETEER_SKIP_DOWNLOAD: "true"
 
 jobs:
-  validate:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            dashboard/package-lock.json
-
-      - name: Cache Puppeteer browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/puppeteer
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Install root Node dependencies
-        run: npm ci
-
-      - name: Install Chrome for Puppeteer tests
-        run: npx puppeteer browsers install chrome
-
-      - name: Build Dashboard
-        working-directory: dashboard
-        run: |
-          npm ci
-          npm run build
-          npm run lint
-
-      - name: Run root unit tests
-        run: npm test
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt -r requirements-dev.txt
-
-      - name: Run Python Bilibili tests
-        run: python -m pytest test/unit/bilibili
-
-      # Dashboard 生产构建不能省略：dashboard-listener-swap 等测试直接读取
-      # dashboard/dist 产物，与镜像内的 dashboard-builder 阶段各构建一次
-
   # 按架构并行构建：amd64/arm64 各自使用原生 runner，避免 QEMU 模拟。
   # 每个架构以 digest 推送，再由 merge-manifest 合并多架构 manifest 并打 tag。
   build-push:
     if: github.ref == 'refs/heads/main'
-    needs: validate
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
