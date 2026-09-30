@@ -141,10 +141,16 @@ RUN set -eux; \
       libdbus-1-3 \
       libgbm1 \
       libdrm2; \
-    curl -fsSL --http1.1 --retry 5 --retry-all-errors -C - \
-        -o /tmp/ffmpeg.tar.xz "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${arch}-static.tar.xz" \
-      || curl -fsSL --retry 5 --retry-all-errors -C - \
-        -o /tmp/ffmpeg.tar.xz "https://gh-proxy.org/https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${btbn}-gpl.tar.xz"; \
+    for url in \
+        "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${arch}-static.tar.xz" \
+        "https://gh-proxy.org/https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${btbn}-gpl.tar.xz"; do \
+        rm -f /tmp/ffmpeg.tar.xz; \
+        if curl -fsSL --http1.1 --retry 5 --retry-all-errors -C - -o /tmp/ffmpeg.tar.xz "$url" \
+            && [ "$(od -An -N6 -tx1 /tmp/ffmpeg.tar.xz | tr -d ' \n')" = "fd377a585a00" ]; then \
+            break; \
+        fi; \
+    done; \
+    [ "$(od -An -N6 -tx1 /tmp/ffmpeg.tar.xz 2>/dev/null | tr -d ' \n')" = "fd377a585a00" ] || { echo "no valid ffmpeg archive downloaded"; exit 1; }; \
     tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
     install -m 0755 "$(find /tmp -maxdepth 2 -type f -name ffmpeg | head -1)" /usr/local/bin/ffmpeg; \
     rm -rf /tmp/ffmpeg.tar.xz /tmp/ffmpeg-*-static /tmp/ffmpeg-master-latest-*; \

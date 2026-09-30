@@ -132,6 +132,8 @@ jobs:
     needs: build-push
     permissions:
       contents: write
+      # 版本提交若包含 workflow 变更，创建指向该提交的 git tag 也需要此权限
+      workflows: write
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
