@@ -31,3 +31,14 @@
   （dashboard-listener-swap 等测试直接读取 dashboard/dist 产物）。
 - build-push 改为按架构矩阵并行：amd64 用 ubuntu-latest、arm64 用 ubuntu-24.04-arm（仓库公开，arm runner 免费），移除 QEMU；每个架构 push-by-digest，按架构隔离 gha 缓存 scope。
 - 新增 merge-manifest 作业：合并双架构 digest 为单一 manifest 并打版本/latest 标签；版本解析与 git tag 收敛到此处，避免矩阵任务竞争创建 tag。
+
+## 迭代修复记录（同日发布 v3.32.1 → v3.32.4）
+
+- v3.32.1：validate 去掉 dashboard 构建导致 dashboard-listener-swap 测试失败（该测试读取 dashboard/dist 产物），v3.32.2 恢复。
+- v3.32.2：arm64 腿 johnvansickle 下载静默损坏（curl 退出码 0 但内容非 xz），v3.32.3 改为校验 xz 魔数后使用、失败自动切 gh-proxy 的 BtbN 回退源。
+- v3.32.3：GITHUB_TOKEN 的 permissions 不支持 workflows 键导致 workflow 校验失败，v3.32.4 回退；tag 推送失败降级为告警（镜像已先行发布），实际后续观察 tag 推送成功。
+- v3.32.0 的 git tag/Release 由维护者手动补打（镜像本身已发布）。
+
+## 最终验证（v3.32.4 全流程绿灯）
+
+validate 3m26s → 双架构构建并行 1m28s/1m39s（原生 runner，无 QEMU）→ 合并 manifest 32s → release 10s。镜像 amd64+arm64 manifest 正常，v3.32.4 tag 指向正确提交。
