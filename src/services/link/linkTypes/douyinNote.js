@@ -16,10 +16,12 @@ module.exports = {
     },
 
     async fetch(groupId, descriptor) {
-        // 平台开关：系统级 enabled + 群级 douyinEnabled，关闭时静默跳过
-        const sysEnabled = config.externalParsers?.douyin?.enabled ?? false
-        const groupEnabled = config.getGroupConfig(String(groupId), 'douyinEnabled') ?? false
-        if (!sysEnabled && !groupEnabled) {
+        // 平台开关：群级 douyinEnabled 缺席 = 跟随全局；显式布尔值 = 群级强制覆盖，关闭时静默跳过
+        if (!config.isExternalParserEnabledForGroup(
+            String(groupId),
+            'douyinEnabled',
+            config.externalParsers?.douyin?.enabled ?? false
+        )) {
             return { status: 'disabled', message: 'douyin parser is disabled' }
         }
 
@@ -55,10 +57,13 @@ module.exports = {
         const data = context.info?.data
         if (!data) return
 
-        // 图集 / Live Photo 投递开关与视频下载共用 downloadEnabled 配置
-        const sysDownloadEnabled = config.externalParsers?.douyin?.downloadEnabled ?? false
-        const groupDownloadEnabled = config.getGroupConfig(String(context.groupId), 'douyinDownloadEnabled') ?? false
-        if (!sysDownloadEnabled && !groupDownloadEnabled) return
+        // 图集 / Live Photo 投递开关与视频下载共用 downloadEnabled 配置：群级缺席 = 跟随全局
+        const downloadEnabled = config.isExternalParserEnabledForGroup(
+            String(context.groupId),
+            'douyinDownloadEnabled',
+            config.externalParsers?.douyin?.downloadEnabled ?? false
+        )
+        if (!downloadEnabled) return
 
         try {
             if (data.type === 'douyin_live_photo' && Array.isArray(data.livePhotos) && data.livePhotos.length > 0) {

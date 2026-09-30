@@ -267,6 +267,12 @@ function generateUnifiedCSS(colorData, viewport, options = {}) {
                 background: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.02) 100%);
             }
 
+            /* 抖音徽章：品牌底色偏深，图标反白与文字同色（emoji 不受 color 影响，用滤镜转白色剪影）；
+               invert(0.88) 保留一点点灰，避免与纯白文字完全融为一体 */
+            .type-badge--douyin .badge-icon {
+                filter: brightness(0) invert(0.88);
+            }
+
             /* 充电专属标记 */
             .charging-mark {
                 display: inline-flex;

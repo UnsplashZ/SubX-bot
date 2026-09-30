@@ -12,10 +12,12 @@ module.exports = {
     },
 
     async fetch(groupId, descriptor) {
-        // 平台开关：系统级 enabled + 群级 xiaohongshuEnabled，关闭时静默跳过
-        const sysEnabled = config.externalParsers?.xiaohongshu?.enabled ?? false
-        const groupEnabled = config.getGroupConfig(String(groupId), 'xiaohongshuEnabled') ?? false
-        if (!sysEnabled && !groupEnabled) {
+        // 平台开关：群级 xiaohongshuEnabled 缺席 = 跟随全局；显式布尔值 = 群级强制覆盖，关闭时静默跳过
+        if (!config.isExternalParserEnabledForGroup(
+            String(groupId),
+            'xiaohongshuEnabled',
+            config.externalParsers?.xiaohongshu?.enabled ?? false
+        )) {
             return { status: 'disabled', message: 'xiaohongshu parser is disabled' }
         }
 

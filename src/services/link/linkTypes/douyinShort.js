@@ -29,10 +29,12 @@ module.exports = {
     },
 
     async fetch(groupId, descriptor) {
-        // 平台开关：系统级 enabled + 群级 douyinEnabled，关闭时静默跳过
-        const sysEnabled = config.externalParsers?.douyin?.enabled ?? false
-        const groupEnabled = config.getGroupConfig(String(groupId), 'douyinEnabled') ?? false
-        if (!sysEnabled && !groupEnabled) {
+        // 平台开关：群级 douyinEnabled 缺席 = 跟随全局；显式布尔值 = 群级强制覆盖，关闭时静默跳过
+        if (!config.isExternalParserEnabledForGroup(
+            String(groupId),
+            'douyinEnabled',
+            config.externalParsers?.douyin?.enabled ?? false
+        )) {
             return { status: 'disabled', message: 'douyin parser is disabled' }
         }
 

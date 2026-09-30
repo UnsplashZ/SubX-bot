@@ -23,6 +23,10 @@ const ALLOWED_GLOBAL_CONFIG_KEYS = new Set([
     'douyinDownloadEnabled',
     'xiaohongshuEnabled',
     'xiaohongshuCookie',
+    'douyinDownloadMaxDurationSeconds',
+    'douyinDownloadMaxFileSizeMB',
+    'xiaohongshuDownloadMaxDurationSeconds',
+    'xiaohongshuDownloadMaxFileSizeMB',
     'wsUrl',
     'wsToken',
     'qqProvider',
@@ -51,7 +55,11 @@ const INTEGER_KEYS = new Set([
     'qqOfficialGatewayAckTimeoutMs',
     'qqOfficialAccountQpm',
     'qqOfficialGroupQpm',
-    'qqOfficialQueueMaxSize'
+    'qqOfficialQueueMaxSize',
+    'douyinDownloadMaxDurationSeconds',
+    'douyinDownloadMaxFileSizeMB',
+    'xiaohongshuDownloadMaxDurationSeconds',
+    'xiaohongshuDownloadMaxFileSizeMB'
 ])
 const BOOLEAN_KEYS = new Set([
     'showId',

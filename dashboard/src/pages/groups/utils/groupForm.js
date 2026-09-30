@@ -18,9 +18,13 @@ export const createDefaultGroupFormData = () => ({
   blacklistedQQs: [],
   admins: [],
   nightMode: createDefaultNightMode(),
-  douyinEnabled: false,
-  douyinDownloadEnabled: false,
-  xiaohongshuEnabled: false
+  douyinEnabled: null,
+  douyinDownloadEnabled: null,
+  xiaohongshuEnabled: null,
+  douyinDownloadMaxDurationSeconds: null,
+  douyinDownloadMaxFileSizeMB: null,
+  xiaohongshuDownloadMaxDurationSeconds: null,
+  xiaohongshuDownloadMaxFileSizeMB: null
 });
 
 const resolveCookieSyncGroupNames = (value) => {
@@ -46,8 +50,13 @@ export const mapGroupConfigToFormData = (config, globalShowId) => {
     blacklistedQQs: Array.isArray(safeConfig.blacklistedQQs) ? safeConfig.blacklistedQQs : [],
     admins: Array.isArray(safeConfig.admins) ? safeConfig.admins : [],
     nightMode: safeConfig.nightMode || createDefaultNightMode(),
-    douyinEnabled: safeConfig.douyinEnabled ?? false,
-    douyinDownloadEnabled: safeConfig.douyinDownloadEnabled ?? false,
-    xiaohongshuEnabled: safeConfig.xiaohongshuEnabled ?? false
+    // 外部平台字段：null = 跟随全局（键缺席），布尔值 / 整数 = 群级覆盖
+    douyinEnabled: safeConfig.douyinEnabled ?? null,
+    douyinDownloadEnabled: safeConfig.douyinDownloadEnabled ?? null,
+    xiaohongshuEnabled: safeConfig.xiaohongshuEnabled ?? null,
+    douyinDownloadMaxDurationSeconds: safeConfig.douyinDownloadMaxDurationSeconds ?? null,
+    douyinDownloadMaxFileSizeMB: safeConfig.douyinDownloadMaxFileSizeMB ?? null,
+    xiaohongshuDownloadMaxDurationSeconds: safeConfig.xiaohongshuDownloadMaxDurationSeconds ?? null,
+    xiaohongshuDownloadMaxFileSizeMB: safeConfig.xiaohongshuDownloadMaxFileSizeMB ?? null
   };
 };

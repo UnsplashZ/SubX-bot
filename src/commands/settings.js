@@ -62,6 +62,13 @@ async function setGroupConfigPath(groupId, key, value) {
     return setConfigPath(['groupConfigs', String(groupId), key], value);
 }
 
+async function removeGroupConfigPath(groupId, key) {
+    return config.patch([{ op: 'remove', path: ['groupConfigs', String(groupId), key] }], {
+        actor: 'qq-command:settings',
+        expectedGeneration: expectedGeneration()
+    });
+}
+
 async function setGroupEnabled(groupId, enabled) {
     const target = String(groupId);
     const scope = config.getProviderScope();
@@ -280,11 +287,12 @@ class SettingsCommand {
                 }[parts[2]];
 
                 // 外部平台开关只写入群配置，Cookie 等登录凭据不通过群命令处理。
+                // 开/关 = 群级强制覆盖；跟随 = 删除群级覆盖，恢复跟随全局设置。
                 if (platformKey) {
                     const action = parts[3];
                     const targetGroupId = parts[4] || groupId;
-                    if (!['开', '关'].includes(action)) {
-                        this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: '指令格式错误。请使用：/设置 功能 抖音 <开|关> 或 /设置 功能 小红书 <开|关>' } }]);
+                    if (!['开', '关', '跟随'].includes(action)) {
+                        this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: '指令格式错误。请使用：/设置 功能 抖音 <开|关|跟随> 或 /设置 功能 小红书 <开|关|跟随>' } }]);
                         return true;
                     }
                     if (!targetGroupId) {
@@ -295,8 +303,13 @@ class SettingsCommand {
                         this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: '权限不足：您只能管理当前群组的配置。' } }]);
                         return true;
                     }
-                    await setGroupConfigPath(targetGroupId, platformKey, action === '开');
                     const platformName = platformKey === 'douyinEnabled' ? '抖音' : '小红书';
+                    if (action === '跟随') {
+                        await removeGroupConfigPath(targetGroupId, platformKey);
+                        this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: `已恢复群 ${targetGroupId} 的${platformName}解析为跟随全局设置。` } }]);
+                        return true;
+                    }
+                    await setGroupConfigPath(targetGroupId, platformKey, action === '开');
                     this.sendGroupMessage(ws, groupId, [{ type: 'text', data: { text: `已${action === '开' ? '开启' : '关闭'}群 ${targetGroupId} 的${platformName}解析。` } }]);
                     return true;
                 }

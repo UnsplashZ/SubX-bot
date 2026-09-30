@@ -259,7 +259,7 @@ function Groups() {
                   actionLoading={actionLoading}
                   onResetVideoDownloadConfig={resetVideoDownloadConfig}
                 />
-                <ExternalParserTab formData={formData} setFormData={setFormData} />
+                <ExternalParserTab formData={formData} setFormData={setFormData} globalConfig={globalConfig} />
               </ModernTabs>
             </GlassCard>
           ) : (

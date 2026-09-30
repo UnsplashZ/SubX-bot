@@ -130,7 +130,12 @@ const groupConfigSchema = objectNode({
     videoDownloadMaxDuration: integerNode(600, { minimum: 0 }),
     douyinEnabled: booleanNode(false),
     douyinDownloadEnabled: booleanNode(false),
-    xiaohongshuEnabled: booleanNode(false)
+    xiaohongshuEnabled: booleanNode(false),
+    // 群级下载限制覆盖：键缺席表示跟随全局（externalParsers.* 下同名字段）
+    douyinDownloadMaxDurationSeconds: integerNode(120, { minimum: 0, maximum: 600 }),
+    douyinDownloadMaxFileSizeMB: integerNode(50, { minimum: 1, maximum: 500 }),
+    xiaohongshuDownloadMaxDurationSeconds: integerNode(120, { minimum: 0, maximum: 600 }),
+    xiaohongshuDownloadMaxFileSizeMB: integerNode(50, { minimum: 1, maximum: 500 })
 }, { partial: true })
 
 const CONFIG_SCHEMA = objectNode({
@@ -322,6 +327,10 @@ const FLAT_KEY_TO_PATH = Object.freeze({
     xiaohongshuEnabled: ['externalParsers', 'xiaohongshu', 'enabled'],
     xiaohongshuDownloadEnabled: ['externalParsers', 'xiaohongshu', 'downloadEnabled'],
     xiaohongshuCookie: ['externalParsers', 'xiaohongshu', 'cookie'],
+    douyinDownloadMaxDurationSeconds: ['externalParsers', 'douyin', 'downloadMaxDurationSeconds'],
+    douyinDownloadMaxFileSizeMB: ['externalParsers', 'douyin', 'downloadMaxFileSizeMB'],
+    xiaohongshuDownloadMaxDurationSeconds: ['externalParsers', 'xiaohongshu', 'downloadMaxDurationSeconds'],
+    xiaohongshuDownloadMaxFileSizeMB: ['externalParsers', 'xiaohongshu', 'downloadMaxFileSizeMB'],
     // 整节点暴露，供 config.externalParsers?.douyin?.enabled 嵌套访问
     externalParsers: ['externalParsers'],
     blacklistedQQs: ['blacklistedQQs'],

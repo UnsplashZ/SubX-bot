@@ -49,6 +49,70 @@ const ExternalParserSection = ({
           )}
         />
         <SettingRow
+          title="抖音下载最大时长"
+          description="超过此时长的抖音视频不下载，0 表示不限制。"
+          status="秒"
+          control={(
+            <input
+              type="number"
+              min="0"
+              max="600"
+              value={config.douyinDownloadMaxDurationSeconds}
+              onChange={(event) => onChange('douyinDownloadMaxDurationSeconds', parseInt(event.target.value, 10) || 0)}
+              disabled={disabled}
+              className="field-control w-24 px-3 py-1.5 text-right text-sm"
+            />
+          )}
+        />
+        <SettingRow
+          title="抖音下载最大文件大小"
+          description="超过此大小的抖音媒体不下载。"
+          status="MB"
+          control={(
+            <input
+              type="number"
+              min="1"
+              max="500"
+              value={config.douyinDownloadMaxFileSizeMB}
+              onChange={(event) => onChange('douyinDownloadMaxFileSizeMB', parseInt(event.target.value, 10) || 0)}
+              disabled={disabled}
+              className="field-control w-24 px-3 py-1.5 text-right text-sm"
+            />
+          )}
+        />
+        <SettingRow
+          title="小红书下载最大时长"
+          description="超过此时长的小红书视频不下载，0 表示不限制。"
+          status="秒"
+          control={(
+            <input
+              type="number"
+              min="0"
+              max="600"
+              value={config.xiaohongshuDownloadMaxDurationSeconds}
+              onChange={(event) => onChange('xiaohongshuDownloadMaxDurationSeconds', parseInt(event.target.value, 10) || 0)}
+              disabled={disabled}
+              className="field-control w-24 px-3 py-1.5 text-right text-sm"
+            />
+          )}
+        />
+        <SettingRow
+          title="小红书下载最大文件大小"
+          description="超过此大小的小红书媒体不下载。"
+          status="MB"
+          control={(
+            <input
+              type="number"
+              min="1"
+              max="500"
+              value={config.xiaohongshuDownloadMaxFileSizeMB}
+              onChange={(event) => onChange('xiaohongshuDownloadMaxFileSizeMB', parseInt(event.target.value, 10) || 0)}
+              disabled={disabled}
+              className="field-control w-24 px-3 py-1.5 text-right text-sm"
+            />
+          )}
+        />
+        <SettingRow
           title="小红书登录 Cookie"
           description="从浏览器开发者工具复制 Cookie 粘贴到这里。凭据不会回显或写入日志。"
           control={(

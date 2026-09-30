@@ -117,9 +117,9 @@ function getTypeConfig(type, data) {
         article_list: { label: '文集', color: '#FAA023', icon: '📑' },
         note: { label: '笔记', color: '#4CAF50', icon: '📝' },
         cheese_video: { label: '课程', color: '#FF7043', icon: '🎓' },
-        douyin_video: { label: '抖音视频', color: '#161823', icon: '🎵' },
-        douyin_note: { label: '抖音图集', color: '#161823', icon: '🖼️' },
-        douyin_live_photo: { label: '抖音 Live Photo', color: '#161823', icon: '✨' },
+        douyin_video: { label: '抖音视频', color: '#333550', icon: '🎵' },
+        douyin_note: { label: '抖音图集', color: '#333550', icon: '🖼️' },
+        douyin_live_photo: { label: '抖音 Live Photo', color: '#333550', icon: '✨' },
         xhs_video: { label: '小红书视频', color: '#FF2442', icon: '📹' },
         xhs_note: { label: '小红书笔记', color: '#FF2442', icon: '📕' }
     };
@@ -146,7 +146,7 @@ function getTypeConfig(type, data) {
  * 计算配色方案
  */
 function calculateColors(type, data, currentType, isNight) {
-    const badgeColor = isNight ? adjustBrightness(currentType.color, -25) : currentType.color;
+    const badgeColor = currentType.color;
     const themeClass = isNight ? 'theme-dark' : 'theme-light';
 
     // Gradient Mix Logic
@@ -216,7 +216,9 @@ function calculateColors(type, data, currentType, isNight) {
     const gradientMix = [gradientOverlay, contentLayer, atmosphereLayer].filter(Boolean).join(', ');
 
     if (isNight) {
-        // 深色模式：更浓郁
+        // 深色模式：徽章底用品牌色渐变 + 白字（与浅色模式一致），整体压暗一档，
+        // 避免亮色品牌色（如小红书红）在深色卡片上过于刺眼；暗色品牌色（如抖音深靛）轻微加深即可
+        const nightBadgeBase = adjustBrightness(badgeColor, -12)
         return {
             badgeColor,
             themeClass,
@@ -224,10 +226,10 @@ function calculateColors(type, data, currentType, isNight) {
             gradientContent: contentLayer,
             gradientOverlay,
             gradientMix,
-            badgeBg: '#23272D',
-            badgeTextColor: badgeColor,
-            badgeShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
-            badgeBorder: '1px solid rgba(255, 255, 255, 0.1)',
+            badgeBg: `linear-gradient(135deg, ${nightBadgeBase}, ${adjustBrightness(badgeColor, -22)})`,
+            badgeTextColor: '#fff',
+            badgeShadow: `0 8px 24px ${hexToRgba(currentType.color, 0.40)}, var(--shadow-sm)`,
+            badgeBorder: 'none',
             currentType
         };
     } else {

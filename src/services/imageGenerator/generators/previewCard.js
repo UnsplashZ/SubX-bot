@@ -73,9 +73,11 @@ function renderTypeBadge(type, data, groupId, currentType) {
 
     const isCharging = detectChargingContent(type, data)
     const layoutAttr = isEditableType(type) ? ' data-layout-key="typeBadge"' : ''
+    // 抖音品牌底色偏深：图标用反白剪影，与徽章文字颜色保持一致（浅色/深色模式通用）
+    const badgeClass = type.startsWith('douyin') ? 'type-badge type-badge--douyin' : 'type-badge'
     return `
-        <div class="type-badge"${layoutAttr}>
-            <span>${currentType.icon}</span>
+        <div class="${badgeClass}"${layoutAttr}>
+            <span class="badge-icon">${currentType.icon}</span>
             <span>${currentType.label}</span>
             ${isCharging ? '<span class="charging-mark" title="充电专属" aria-label="充电专属">⚡</span>' : ''}
         </div>`;

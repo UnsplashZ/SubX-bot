@@ -13,10 +13,12 @@ module.exports = {
     },
 
     async fetch(groupId, descriptor) {
-        // 平台开关：系统级 enabled + 群级 xiaohongshuEnabled，关闭时静默跳过
-        const sysEnabled = config.externalParsers?.xiaohongshu?.enabled ?? false
-        const groupEnabled = config.getGroupConfig(String(groupId), 'xiaohongshuEnabled') ?? false
-        if (!sysEnabled && !groupEnabled) {
+        // 平台开关：群级 xiaohongshuEnabled 缺席 = 跟随全局；显式布尔值 = 群级强制覆盖，关闭时静默跳过
+        if (!config.isExternalParserEnabledForGroup(
+            String(groupId),
+            'xiaohongshuEnabled',
+            config.externalParsers?.xiaohongshu?.enabled ?? false
+        )) {
             return { status: 'disabled', message: 'xiaohongshu parser is disabled' }
         }
 
@@ -66,8 +68,16 @@ module.exports = {
                 author: data.author?.name,
                 platform: 'xiaohongshu',
                 durationSeconds: data.video_duration ?? 0,
-                maxDurationSeconds: xhsCfg.downloadMaxDurationSeconds ?? 120,
-                maxFileSizeBytes: (xhsCfg.downloadMaxFileSizeMB ?? 50) * 1024 * 1024,
+                maxDurationSeconds: config.getExternalParserLimitForGroup(
+                    context.groupId,
+                    'xiaohongshuDownloadMaxDurationSeconds',
+                    xhsCfg.downloadMaxDurationSeconds ?? 120
+                ),
+                maxFileSizeBytes: config.getExternalParserLimitForGroup(
+                    context.groupId,
+                    'xiaohongshuDownloadMaxFileSizeMB',
+                    xhsCfg.downloadMaxFileSizeMB ?? 50
+                ) * 1024 * 1024,
                 requestHeaders: {
                     Referer: 'https://www.xiaohongshu.com/',
                     ...(xhsCfg.cookie ? { Cookie: String(xhsCfg.cookie) } : {}),

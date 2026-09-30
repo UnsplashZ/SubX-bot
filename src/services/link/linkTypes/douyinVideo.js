@@ -6,10 +6,12 @@ const logger = require('../../../utils/logger')
 const config = require('../../../config')
 
 function isDouyinEnabled(groupId) {
-    // 配置路径：externalParsers.douyin.*（嵌套访问，与 config.videoDownload?.enabled 模式一致）
-    const sysEnabled = config.externalParsers?.douyin?.enabled ?? false
-    const groupEnabled = config.getGroupConfig(String(groupId), 'douyinEnabled') ?? false
-    return Boolean(sysEnabled || groupEnabled)
+    // 群级 douyinEnabled 缺席 = 跟随全局；显式布尔值 = 群级强制覆盖
+    return config.isExternalParserEnabledForGroup(
+        String(groupId),
+        'douyinEnabled',
+        config.externalParsers?.douyin?.enabled ?? false
+    )
 }
 
 module.exports = {
@@ -61,11 +63,13 @@ module.exports = {
         const data = context.info?.data
         if (!data || data.type !== 'douyin_video' || !data.play_addr_uri) return
 
-        // 检查群组是否开启了抖音视频下载
-        // 配置路径：externalParsers.douyin.downloadEnabled（嵌套访问）
-        const sysDownloadEnabled = config.externalParsers?.douyin?.downloadEnabled ?? false
-        const groupDownloadEnabled = config.getGroupConfig(String(context.groupId), 'douyinDownloadEnabled') ?? false
-        if (!sysDownloadEnabled && !groupDownloadEnabled) return
+        // 检查群组是否开启了抖音视频下载：群级 douyinDownloadEnabled 缺席 = 跟随全局
+        const downloadEnabled = config.isExternalParserEnabledForGroup(
+            String(context.groupId),
+            'douyinDownloadEnabled',
+            config.externalParsers?.douyin?.downloadEnabled ?? false
+        )
+        if (!downloadEnabled) return
 
         const douyinCfg = config.externalParsers?.douyin || {}
         try {
@@ -79,8 +83,16 @@ module.exports = {
                 // data.duration 单位为秒（normalizeAweme 中已做 /1000），必须显式传入，
                 // 否则时长预检不生效
                 durationSeconds: data.duration ?? 0,
-                maxDurationSeconds: douyinCfg.downloadMaxDurationSeconds ?? 120,
-                maxFileSizeBytes: (douyinCfg.downloadMaxFileSizeMB ?? 50) * 1024 * 1024,
+                maxDurationSeconds: config.getExternalParserLimitForGroup(
+                    context.groupId,
+                    'douyinDownloadMaxDurationSeconds',
+                    douyinCfg.downloadMaxDurationSeconds ?? 120
+                ),
+                maxFileSizeBytes: config.getExternalParserLimitForGroup(
+                    context.groupId,
+                    'douyinDownloadMaxFileSizeMB',
+                    douyinCfg.downloadMaxFileSizeMB ?? 50
+                ) * 1024 * 1024,
             })
         } catch (err) {
             logger.logEvent('error', 'LINK', '', 'douyin-download-failed', {

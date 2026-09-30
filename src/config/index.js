@@ -373,7 +373,9 @@ const config = {
             'qqOfficialTempPublicBaseUrl', 'qqOfficialRootOpenids',
             'qqOfficialAccountQpm', 'qqOfficialGroupQpm',
             'qqOfficialQueueMaxSize', 'douyinEnabled',
-            'douyinDownloadEnabled', 'xiaohongshuEnabled'
+            'douyinDownloadEnabled', 'xiaohongshuEnabled',
+            'douyinDownloadMaxDurationSeconds', 'douyinDownloadMaxFileSizeMB',
+            'xiaohongshuDownloadMaxDurationSeconds', 'xiaohongshuDownloadMaxFileSizeMB'
         ]
         const snapshot = Object.fromEntries(keys.map((key) => [key, clone(this[key])]))
         snapshot.qqOfficialClientSecretConfigured = Boolean(this.qqOfficialClientSecret)
@@ -430,6 +432,21 @@ config.getVideoDownloadMaxDurationForGroup = function(groupId) {
     return current && 'videoDownloadMaxDuration' in current
         ? current.videoDownloadMaxDuration
         : config.videoDownloadMaxDuration
+}
+
+// 外部平台（抖音 / 小红书）群级开关解析：键缺席 = 跟随全局，布尔值 = 群级强制覆盖
+config.isExternalParserEnabledForGroup = function(groupId, key, globalValue) {
+    const current = config.groupConfigs?.[String(groupId)]
+    return current && key in current
+        ? Boolean(current[key])
+        : Boolean(globalValue)
+}
+
+// 外部平台群级下载限制解析：键缺席或非整数 = 跟随全局
+config.getExternalParserLimitForGroup = function(groupId, key, globalValue) {
+    const current = config.groupConfigs?.[String(groupId)]
+    const value = current?.[key]
+    return Number.isSafeInteger(value) ? value : globalValue
 }
 
 config.createDefaultSubscriptionAtAllRules = createDefaultSubscriptionAtAllRules

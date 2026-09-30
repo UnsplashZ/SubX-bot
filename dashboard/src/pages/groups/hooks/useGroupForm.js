@@ -6,7 +6,14 @@ import { validateNightMode } from '../utils/validators';
 
 const DEFAULT_GLOBAL_CONFIG = {
   rootAdminQQ: undefined,
-  showId: true
+  showId: true,
+  douyinEnabled: false,
+  douyinDownloadEnabled: false,
+  xiaohongshuEnabled: false,
+  douyinDownloadMaxDurationSeconds: 120,
+  douyinDownloadMaxFileSizeMB: 50,
+  xiaohongshuDownloadMaxDurationSeconds: 120,
+  xiaohongshuDownloadMaxFileSizeMB: 50
 };
 
 const useGroupForm = ({
@@ -31,7 +38,14 @@ const useGroupForm = ({
         if (res.data) {
           setGlobalConfig({
             rootAdminQQ: res.data.rootAdminQQ,
-            showId: res.data.showId ?? true
+            showId: res.data.showId ?? true,
+            douyinEnabled: res.data.douyinEnabled ?? false,
+            douyinDownloadEnabled: res.data.douyinDownloadEnabled ?? false,
+            xiaohongshuEnabled: res.data.xiaohongshuEnabled ?? false,
+            douyinDownloadMaxDurationSeconds: res.data.douyinDownloadMaxDurationSeconds ?? 120,
+            douyinDownloadMaxFileSizeMB: res.data.douyinDownloadMaxFileSizeMB ?? 50,
+            xiaohongshuDownloadMaxDurationSeconds: res.data.xiaohongshuDownloadMaxDurationSeconds ?? 120,
+            xiaohongshuDownloadMaxFileSizeMB: res.data.xiaohongshuDownloadMaxFileSizeMB ?? 50
           });
         }
       } catch (err) {

@@ -35,6 +35,18 @@ function recoverySettingsData() {
       videoDownloadCleanTimeout: 6
     },
     setVideoDownloadConfig: vi.fn(),
+    externalParserConfig: {
+      douyinEnabled: false,
+      douyinDownloadEnabled: false,
+      xiaohongshuEnabled: false,
+      douyinDownloadMaxDurationSeconds: 120,
+      douyinDownloadMaxFileSizeMB: 50,
+      xiaohongshuDownloadMaxDurationSeconds: 120,
+      xiaohongshuDownloadMaxFileSizeMB: 50,
+      xiaohongshuCookie: '',
+      xiaohongshuCookieConfigured: false
+    },
+    setExternalParserConfig: vi.fn(),
     qqProviderConfig: { qqProvider: 'napcat', qqOfficialRootOpenids: [] },
     setQqProviderConfig: vi.fn(),
     qqProviderStatus: null,

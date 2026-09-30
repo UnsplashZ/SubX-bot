@@ -41,7 +41,11 @@ const GROUP_CONFIG_KEYS = new Set([
     'videoDownloadMaxDuration',
     'douyinEnabled',
     'douyinDownloadEnabled',
-    'xiaohongshuEnabled'
+    'xiaohongshuEnabled',
+    'douyinDownloadMaxDurationSeconds',
+    'douyinDownloadMaxFileSizeMB',
+    'xiaohongshuDownloadMaxDurationSeconds',
+    'xiaohongshuDownloadMaxFileSizeMB'
 ])
 
 const GROUP_BOOLEAN_KEYS = new Set([
@@ -54,6 +58,25 @@ const GROUP_BOOLEAN_KEYS = new Set([
     'douyinDownloadEnabled',
     'xiaohongshuEnabled'
 ])
+
+// 外部平台群级字段：null 表示删除覆盖、恢复跟随全局
+const GROUP_EXTERNAL_FOLLOW_KEYS = [
+    'douyinEnabled',
+    'douyinDownloadEnabled',
+    'xiaohongshuEnabled',
+    'douyinDownloadMaxDurationSeconds',
+    'douyinDownloadMaxFileSizeMB',
+    'xiaohongshuDownloadMaxDurationSeconds',
+    'xiaohongshuDownloadMaxFileSizeMB'
+]
+
+// 群级下载限制取值范围，与 schemaV1 groupConfigSchema 保持一致
+const GROUP_EXTERNAL_LIMIT_RANGES = {
+    douyinDownloadMaxDurationSeconds: { min: 0, max: 600 },
+    douyinDownloadMaxFileSizeMB: { min: 1, max: 500 },
+    xiaohongshuDownloadMaxDurationSeconds: { min: 0, max: 600 },
+    xiaohongshuDownloadMaxFileSizeMB: { min: 1, max: 500 }
+}
 
 // GET /api/groups - List all groups (including disabled and left ones)
 router.get('/groups', async (req, res) => {
@@ -245,9 +268,23 @@ router.post('/groups/:id/config', async (req, res) => {
         }
 
         for (const key of GROUP_BOOLEAN_KEYS) {
-            if (Object.prototype.hasOwnProperty.call(updates, key) && typeof updates[key] !== 'boolean') {
+            if (!Object.prototype.hasOwnProperty.call(updates, key)) continue
+            // 外部平台开关允许 null：null = 删除群级覆盖，恢复跟随全局
+            if (GROUP_EXTERNAL_FOLLOW_KEYS.includes(key) && updates[key] === null) continue
+            if (typeof updates[key] !== 'boolean') {
                 return res.status(400).json({ error: `${key} must be a boolean` })
             }
+        }
+
+        for (const [key, range] of Object.entries(GROUP_EXTERNAL_LIMIT_RANGES)) {
+            if (!Object.prototype.hasOwnProperty.call(updates, key) || updates[key] === null) continue
+            const parsed = Number(updates[key])
+            if (!Number.isSafeInteger(parsed) || parsed < range.min || parsed > range.max) {
+                return res.status(400).json({
+                    error: `${key} must be an integer between ${range.min} and ${range.max}, or null`
+                })
+            }
+            updates[key] = parsed
         }
 
         if (
@@ -340,10 +377,18 @@ router.post('/groups/:id/config', async (req, res) => {
         ) {
             delete cleanedUpdates.subscriptionAtAllRules
         }
+        // null 的外部平台字段不落库：已在上文转换为删除覆盖键
+        for (const key of GROUP_EXTERNAL_FOLLOW_KEYS) {
+            if (updates[key] === null) delete cleanedUpdates[key]
+        }
 
         const currentGroupConfigs = sysConfig.getSnapshot().groupConfigs || {}
         const groupConfig = { ...(currentGroupConfigs[groupIdStr] || {}) }
         if (updates.subscriptionAtAllRules === null) delete groupConfig.subscriptionAtAllRules
+        // 外部平台字段 null = 跟随全局：删除群级覆盖键
+        for (const key of GROUP_EXTERNAL_FOLLOW_KEYS) {
+            if (updates[key] === null) delete groupConfig[key]
+        }
         Object.assign(groupConfig, cleanedUpdates)
         const result = await sysConfig.patch([
             { op: 'set', path: ['groupConfigs', groupIdStr], value: groupConfig }

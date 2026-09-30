@@ -36,6 +36,10 @@ export const DEFAULT_EXTERNAL_PARSER_CONFIG = {
     douyinEnabled: false,
     douyinDownloadEnabled: false,
     xiaohongshuEnabled: false,
+    douyinDownloadMaxDurationSeconds: 120,
+    douyinDownloadMaxFileSizeMB: 50,
+    xiaohongshuDownloadMaxDurationSeconds: 120,
+    xiaohongshuDownloadMaxFileSizeMB: 50,
     xiaohongshuCookie: '',
     xiaohongshuCookieConfigured: false
 }
