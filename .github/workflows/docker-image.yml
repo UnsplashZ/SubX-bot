@@ -40,10 +40,11 @@ jobs:
       - name: Install Chrome for Puppeteer tests
         run: npx puppeteer browsers install chrome
 
-      - name: Lint Dashboard
+      - name: Build Dashboard
         working-directory: dashboard
         run: |
           npm ci
+          npm run build
           npm run lint
 
       - name: Run root unit tests
@@ -61,7 +62,8 @@ jobs:
       - name: Run Python Bilibili tests
         run: python -m pytest test/unit/bilibili
 
-      # Dashboard 生产构建由镜像构建的 dashboard-builder 阶段覆盖，此处不再重复
+      # Dashboard 生产构建不能省略：dashboard-listener-swap 等测试直接读取
+      # dashboard/dist 产物，与镜像内的 dashboard-builder 阶段各构建一次
 
   # 按架构并行构建：amd64/arm64 各自使用原生 runner，避免 QEMU 模拟。
   # 每个架构以 digest 推送，再由 merge-manifest 合并多架构 manifest 并打 tag。

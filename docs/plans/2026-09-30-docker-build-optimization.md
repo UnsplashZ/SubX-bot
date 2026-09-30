@@ -27,6 +27,7 @@
 ## CI 流水线优化（2026-09-30 第二轮）
 
 - 原 validate 与镜像构建重复安装依赖（npm ci ×4）、重复构建 dashboard（×3，arm64 还在 QEMU 模拟下跑）。
-- validate 精简：去掉独立的 dashboard 生产构建（由镜像 dashboard-builder 阶段覆盖）、Puppeteer Chrome 加入 actions/cache。
+- validate 精简：Puppeteer Chrome 加入 actions/cache；dashboard 生产构建仍需保留
+  （dashboard-listener-swap 等测试直接读取 dashboard/dist 产物）。
 - build-push 改为按架构矩阵并行：amd64 用 ubuntu-latest、arm64 用 ubuntu-24.04-arm（仓库公开，arm runner 免费），移除 QEMU；每个架构 push-by-digest，按架构隔离 gha 缓存 scope。
 - 新增 merge-manifest 作业：合并双架构 digest 为单一 manifest 并打版本/latest 标签；版本解析与 git tag 收敛到此处，避免矩阵任务竞争创建 tag。
