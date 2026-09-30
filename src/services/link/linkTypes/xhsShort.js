@@ -1,6 +1,7 @@
 'use strict'
 
 const { fetchXhsContent, extractNoteId, expandExternalShortUrl } = require('../../externalParsers/xiaohongshuService')
+const xhsNoteHandler = require('./xhsNote')
 const logger = require('../../../utils/logger')
 const config = require('../../../config')
 
@@ -53,5 +54,8 @@ module.exports = {
 
     resolveCardType(info) {
         return info?.data?.type || 'xhs_note'
-    }
+    },
+
+    // 短链展开后可能是视频笔记，下载逻辑复用 xhsNote 的 afterSend（按 data.type 自行过滤）
+    afterSend: xhsNoteHandler.afterSend
 }

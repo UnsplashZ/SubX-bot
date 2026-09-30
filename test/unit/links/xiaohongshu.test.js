@@ -10,6 +10,7 @@ const {
     extractNoteId,
 } = require('../../../src/services/externalParsers/xiaohongshuService')
 const xhsNoteHandler = require('../../../src/services/link/linkTypes/xhsNote')
+const xhsShortHandler = require('../../../src/services/link/linkTypes/xhsShort')
 const externalMediaDelivery = require('../../../src/services/externalMediaDeliveryService')
 const config = require('../../../src/config')
 
@@ -299,6 +300,18 @@ describe('xhsNote handler', function () {
         assert.strictEqual(xhsNoteHandler.buildUrl(descriptor, { status: 'success' }), `https://www.xiaohongshu.com/explore/${NOTE_ID}`)
     })
 
+    it('buildUrl 保留 xsec_token 且不重复拼接问号', function () {
+        const descriptor = {
+            id: NOTE_ID,
+            type: 'xhs_note',
+            meta: { queryString: '?xsec_token=ABCD1234&xsec_source=pc_share' },
+        }
+        assert.strictEqual(
+            xhsNoteHandler.buildUrl(descriptor, { status: 'success' }),
+            `https://www.xiaohongshu.com/explore/${NOTE_ID}?xsec_token=ABCD1234&xsec_source=pc_share`
+        )
+    })
+
     it('getCacheIdentity 返回 note_id', function () {
         assert.strictEqual(xhsNoteHandler.getCacheIdentity({ id: NOTE_ID }), NOTE_ID)
     })
@@ -367,5 +380,56 @@ describe('xhsNote handler', function () {
             groupId: '10001',
             info: { data: { type: 'xhs_video', note_id: NOTE_ID, video_url: 'https://example.com/video.mp4' } },
         }))
+    })
+})
+
+describe('xhsShort handler', function () {
+    const compatState = config.__getMutableCompatStateForTests()
+    const originalExternalParsers = structuredClone(compatState.externalParsers)
+    const originalDownloadAndSend = externalMediaDelivery.downloadAndSend
+
+    afterEach(function () {
+        compatState.externalParsers = structuredClone(originalExternalParsers)
+        externalMediaDelivery.downloadAndSend = originalDownloadAndSend
+    })
+
+    it('复用 xhsNote 的 afterSend：视频笔记触发下载投递', async function () {
+        compatState.externalParsers.xiaohongshu.enabled = true
+        compatState.externalParsers.xiaohongshu.downloadEnabled = true
+        const calls = []
+        externalMediaDelivery.downloadAndSend = async (options) => { calls.push(options); return true }
+
+        assert.strictEqual(typeof xhsShortHandler.afterSend, 'function')
+        await xhsShortHandler.afterSend({
+            ws: {},
+            groupId: '10001',
+            info: {
+                data: {
+                    type: 'xhs_video',
+                    note_id: NOTE_ID,
+                    title: '视频标题',
+                    video_url: 'https://example.com/video.mp4',
+                    video_duration: 10,
+                },
+            },
+        })
+
+        assert.strictEqual(calls.length, 1)
+        assert.strictEqual(calls[0].url, 'https://example.com/video.mp4')
+    })
+
+    it('复用 xhsNote 的 afterSend：图文笔记不触发下载', async function () {
+        compatState.externalParsers.xiaohongshu.enabled = true
+        compatState.externalParsers.xiaohongshu.downloadEnabled = true
+        let callCount = 0
+        externalMediaDelivery.downloadAndSend = async () => { callCount += 1 }
+
+        await xhsShortHandler.afterSend({
+            ws: {},
+            groupId: '10001',
+            info: { data: { type: 'xhs_note', note_id: NOTE_ID, images: [] } },
+        })
+
+        assert.strictEqual(callCount, 0)
     })
 })

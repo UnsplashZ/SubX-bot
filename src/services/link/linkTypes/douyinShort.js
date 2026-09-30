@@ -2,6 +2,8 @@
 
 const { fetchDouyinContent } = require('../../externalParsers/douyinService')
 const { expandExternalShortUrl, isDouyinOrXhsShortLink } = require('../../externalParsers/externalShortLinkExpander')
+const douyinVideoHandler = require('./douyinVideo')
+const douyinNoteHandler = require('./douyinNote')
 const logger = require('../../../utils/logger')
 const config = require('../../../config')
 
@@ -69,6 +71,13 @@ module.exports = {
     resolveCardType(info) {
         // 短链展开后可能是视频 / 图集 / Live Photo，以实际数据类型为准
         return info?.data?.type || 'douyin_video'
+    },
+
+    async afterSend(context) {
+        // 短链展开后的实际类型可能是视频 / 图集 / Live Photo，
+        // 投递逻辑复用 douyinVideo / douyinNote 的 afterSend（各自按 data.type 自行过滤）
+        await douyinVideoHandler.afterSend(context)
+        await douyinNoteHandler.afterSend(context)
     },
 
     buildShortUrl,

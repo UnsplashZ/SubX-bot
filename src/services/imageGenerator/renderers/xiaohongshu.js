@@ -10,7 +10,7 @@ function renderXhsVideoContent(data, emojiContext = null) {
     const dur = info.video_duration ? ` • 时长: ${formatDuration(info.video_duration)}` : ''
 
     return `
-        <div class="cover-container" data-layout-key="cover">
+        <div class="cover-container external" data-layout-key="cover">
             <img class="cover video" src="${escapeHtml(info.cover || '')}" />
             <div class="cover-badge">小红书</div>
         </div>

@@ -40,7 +40,10 @@ module.exports = {
     buildUrl(descriptor, info) {
         // 平台关闭时返回 null，保证 pipeline 静默跳过
         if (info?.status === 'disabled') return null
-        return `https://www.xiaohongshu.com/explore/${descriptor.id}`
+        // 小红书 explore 页必须携带 xsec_token，缺省访问会 404；
+        // 完整 query（fetch 时由 extractMeta 存入 descriptor.meta）需要原样保留（已含前导 ?，可为空串）
+        const queryString = descriptor.meta?.queryString || ''
+        return `https://www.xiaohongshu.com/explore/${descriptor.id}${queryString}`
     },
 
     buildFetchFailureText(info) {

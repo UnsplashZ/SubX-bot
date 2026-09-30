@@ -376,3 +376,75 @@ describe('douyinVideo handler', function () {
         assert.strictEqual(douyinVideoHandler.cacheTtlSeconds, 60)
     })
 })
+
+describe('douyinShort afterSend（短链投递分发）', function () {
+    const config = require('../../../src/config')
+    const externalMediaDelivery = require('../../../src/services/externalMediaDeliveryService')
+    const compatState = config.__getMutableCompatStateForTests()
+    const originalExternalParsers = structuredClone(compatState.externalParsers)
+    const originalDownloadAndSend = externalMediaDelivery.downloadAndSend
+    const originalDeliverImages = externalMediaDelivery.deliverImages
+    const originalDeliverLivePhotoGroup = externalMediaDelivery.deliverLivePhotoGroup
+
+    afterEach(function () {
+        compatState.externalParsers = structuredClone(originalExternalParsers)
+        externalMediaDelivery.downloadAndSend = originalDownloadAndSend
+        externalMediaDelivery.deliverImages = originalDeliverImages
+        externalMediaDelivery.deliverLivePhotoGroup = originalDeliverLivePhotoGroup
+    })
+
+    it('短链展开为视频时触发下载投递', async function () {
+        compatState.externalParsers.douyin = { enabled: true, downloadEnabled: true }
+        const calls = []
+        externalMediaDelivery.downloadAndSend = async (options) => { calls.push(options); return true }
+
+        await douyinShortHandler.afterSend({
+            ws: {},
+            groupId: '10001',
+            info: {
+                data: {
+                    type: 'douyin_video',
+                    aweme_id: '7521023890996514083',
+                    title: '标题',
+                    duration: 6,
+                    play_addr_uri: 'v0200fg10000',
+                    author: { name: '作者' },
+                },
+            },
+        })
+
+        assert.strictEqual(calls.length, 1)
+        assert.strictEqual(
+            calls[0].url,
+            'https://aweme.snssdk.com/aweme/v1/play/?video_id=v0200fg10000&ratio=1080p&line=0'
+        )
+        assert.strictEqual(calls[0].durationSeconds, 6)
+    })
+
+    it('短链展开为图集时触发图片投递，且不触发视频下载', async function () {
+        compatState.externalParsers.douyin = { enabled: true, downloadEnabled: true }
+        let downloadCalls = 0
+        const imageCalls = []
+        externalMediaDelivery.downloadAndSend = async () => { downloadCalls += 1 }
+        externalMediaDelivery.deliverImages = async (ws, groupId, images, label) => {
+            imageCalls.push({ images, label })
+        }
+
+        await douyinShortHandler.afterSend({
+            ws: {},
+            groupId: '10001',
+            info: {
+                data: {
+                    type: 'douyin_note',
+                    aweme_id: '7469411074119322899',
+                    title: '图集标题',
+                    images: ['https://example.com/1.jpg'],
+                },
+            },
+        })
+
+        assert.strictEqual(downloadCalls, 0)
+        assert.strictEqual(imageCalls.length, 1)
+        assert.deepStrictEqual(imageCalls[0].images, ['https://example.com/1.jpg'])
+    })
+})
