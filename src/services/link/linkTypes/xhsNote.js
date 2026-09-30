@@ -7,6 +7,13 @@ const config = require('../../../config')
 
 module.exports = {
     type: 'xhs_note',
+    // 小红书播放地址带短时签名，不能沿用默认数据缓存 TTL。
+    cacheTtlSeconds: 60,
+
+    isCachedInfoUsable(info) {
+        return info?.status === 'success'
+            && (info.data?.type !== 'xhs_video' || Boolean(info.data.video_url))
+    },
 
     getCacheIdentity(descriptor) {
         return descriptor.id  // note_id
@@ -57,7 +64,15 @@ module.exports = {
 
     async afterSend(context) {
         const data = context.info?.data
-        if (!data || data.type !== 'xhs_video' || !data.video_url) return
+        if (!data || data.type !== 'xhs_video') return
+
+        if (!data.video_url) {
+            logger.logEvent('warn', 'LINK', '', 'xhs-download-skipped-no-url', {
+                groupId: context.groupId,
+                id: data.note_id,
+            })
+            return
+        }
 
         const xhsCfg = config.externalParsers?.xiaohongshu || {}
         if (!(xhsCfg.downloadEnabled ?? true)) return

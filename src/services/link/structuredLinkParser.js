@@ -11,7 +11,7 @@ function normalizeUrlToken(token) {
     const urlToken = markdownMatch ? markdownMatch[1].replace(/^<|>$/g, '') : rawToken
     const queryStart = urlToken.indexOf('?')
     const normalizedQuery = queryStart >= 0
-        ? `${urlToken.slice(0, queryStart)}${urlToken.slice(queryStart).replace(/\\&/g, '&')}`
+        ? `${urlToken.slice(0, queryStart)}${urlToken.slice(queryStart).replace(/\\&/g, '&').replace(/&amp;/gi, '&')}`
         : urlToken
 
     return normalizedQuery

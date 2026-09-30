@@ -88,4 +88,25 @@ describe('cacheManager freshness semantics', function () {
             data: { name: 'legacy' }
         })
     })
+
+    it('读取时的 TTL 上限淘汰没有 per-key TTL 的旧媒体缓存', async function () {
+        config.__getMutableCompatStateForTests().dataCacheTTL = 3600
+        const cacheKey = 'xhs_note_stale-video'
+        await fs.writeFile(path.join(tempDir, `${cacheKey}.json`), JSON.stringify({
+            __cacheMeta: { fetchedAt: Date.now() - 120000 },
+            payload: { status: 'success', data: { video_url: 'https://example.com/expired.mp4' } }
+        }))
+
+        assert.strictEqual(await cacheManager.get(cacheKey, 60), null)
+    })
+
+    it('读取时的 TTL 上限不延长已保存的更短 TTL', async function () {
+        const cacheKey = 'xhs_note_short-ttl'
+        await fs.writeFile(path.join(tempDir, `${cacheKey}.json`), JSON.stringify({
+            __cacheMeta: { fetchedAt: Date.now() - 30000, ttlSeconds: 10 },
+            payload: { status: 'success', data: {} }
+        }))
+
+        assert.strictEqual(await cacheManager.get(cacheKey, 60), null)
+    })
 })

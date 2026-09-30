@@ -38,6 +38,14 @@ describe('xiaohongshu link extraction', function () {
         assert.strictEqual(note.meta.queryString, '?xsec_token=ABCD1234&xsec_source=pc_share')
     })
 
+    it('兼容 HTML 转义的 amp 查询分隔符和 Markdown 链接', function () {
+        const links = linkHandler.extractLinks(
+            `[查看笔记](https://www.xiaohongshu.com/explore/${NOTE_ID}?xsec_token=TOKEN\\&amp;xsec_source=pc_feed)`,
+            '10001'
+        )
+        assert.strictEqual(links[0].meta.queryString, '?xsec_token=TOKEN&xsec_source=pc_feed')
+    })
+
     it('从完整 Markdown 链接中提取真实目标 URL', function () {
         const links = linkHandler.extractLinks(
             `[查看小红书笔记](https://www.xiaohongshu.com/explore/${NOTE_ID}?xsec_token=TOKEN\\&xsec_source=pc_feed)`,
@@ -227,6 +235,36 @@ describe('xhs normalizeNote', function () {
             imageList: [],
         }, 'discovery').video_url, null)
     })
+
+    it('兼容小红书当前 EF4/EF5 视频流字段和 JSON 字符串 mediaV2', function () {
+        const result = extractVideoUrl({
+            mediaV2: JSON.stringify({
+                stream: {
+                    EF4: [{ masterUrl: 'https://example.com/259.mp4', duration: 12567 }],
+                    EF5: [{ masterUrl: 'https://example.com/520.mp4', duration: 12567 }],
+                },
+            }),
+        })
+        assert.strictEqual(result.url, 'https://example.com/520.mp4')
+        assert.strictEqual(result.duration, 12)
+    })
+
+    it('未知编码键和 snake_case 字段仍能提取视频地址', function () {
+        const result = extractVideoUrl({
+            mediaV2: JSON.stringify({
+                stream: { futureCodec: [{ master_url: 'https://example.com/future.mp4', duration: 24000 }] }
+            })
+        })
+        assert.deepStrictEqual(result, { url: 'https://example.com/future.mp4', duration: 24 })
+    })
+
+    it('非法 mediaV2 不影响仍可用的 media 视频流', function () {
+        const result = extractVideoUrl({
+            mediaV2: '{broken',
+            media: { stream: { EF4: [{ masterUrl: 'https://example.com/video.mp4', duration: 12000 }] } }
+        })
+        assert.deepStrictEqual(result, { url: 'https://example.com/video.mp4', duration: 12 })
+    })
 })
 
 describe('xhs extractNoteId', function () {
@@ -242,6 +280,11 @@ describe('xhs extractNoteId', function () {
 
     it('extractNoteId 兼容转义查询分隔符', function () {
         const result = extractNoteId(`https://www.xiaohongshu.com/explore/${NOTE_ID}?xsec_token=TOKEN\\&xsec_source=pc`)
+        assert.deepStrictEqual(result, { noteId: NOTE_ID, queryString: '?xsec_token=TOKEN&xsec_source=pc' })
+    })
+
+    it('extractNoteId 兼容 HTML 转义查询分隔符', function () {
+        const result = extractNoteId(`https://www.xiaohongshu.com/explore/${NOTE_ID}?xsec_token=TOKEN&amp;xsec_source=pc`)
         assert.deepStrictEqual(result, { noteId: NOTE_ID, queryString: '?xsec_token=TOKEN&xsec_source=pc' })
     })
 

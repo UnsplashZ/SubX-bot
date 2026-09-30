@@ -27,9 +27,10 @@ class CacheManager {
     /**
      * Get data from cache
      * @param {string} key - Cache key
+     * @param {number} [ttlSeconds] - 读取时的 TTL 上限，也适用于尚未保存 per-key TTL 的旧缓存
      * @returns {Promise<object|null>} - Cached data or null
      */
-    async get(key) {
+    async get(key, ttlSeconds) {
         await this.initPromise;
         try {
             const filePath = path.join(this.cacheDir, `${key}.json`);
@@ -39,7 +40,10 @@ class CacheManager {
             const fetchedAtMs = this._resolveFetchedAtMs(parsed, stats);
             const ageSeconds = fetchedAtMs ? (Date.now() - fetchedAtMs) / 1000 : 0;
 
-            const ttl = parsed?.__cacheMeta?.ttlSeconds ?? config.dataCacheTTL
+            const storedTtl = parsed?.__cacheMeta?.ttlSeconds ?? config.dataCacheTTL
+            const ttl = Number.isFinite(ttlSeconds) && ttlSeconds > 0
+                ? (storedTtl > 0 ? Math.min(storedTtl, ttlSeconds) : ttlSeconds)
+                : storedTtl
             if (ttl && fetchedAtMs && ageSeconds > ttl) {
                 storeLog('info', 'cache-expired', {
                     key,

@@ -8,8 +8,10 @@ async function fetch(handler, groupId, descriptor, options = {}) {
         : descriptor.id
     const cacheKey = `${handler.type}_${identity}`
 
-    let info = await cacheManager.get(cacheKey)
-    if (info) {
+    let info = await cacheManager.get(cacheKey, handler.cacheTtlSeconds)
+    const isUsable = (value) => typeof handler.isCachedInfoUsable !== 'function'
+        || handler.isCachedInfoUsable(value)
+    if (info && isUsable(info)) {
         if (typeof options.onCacheHit === 'function') {
             options.onCacheHit(cacheKey)
         }
@@ -21,7 +23,7 @@ async function fetch(handler, groupId, descriptor, options = {}) {
     }
 
     info = await handler.fetch(groupId, descriptor)
-    if (info && info.status === 'success') {
+    if (info && info.status === 'success' && isUsable(info)) {
         // handler 可声明 cacheTtlSeconds 覆盖全局 TTL（undefined = 用全局默认）
         await cacheManager.set(cacheKey, info, handler.cacheTtlSeconds)
     }

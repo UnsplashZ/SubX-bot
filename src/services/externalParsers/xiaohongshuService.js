@@ -12,7 +12,7 @@ function normalizeQuerySeparators(value) {
     const text = String(value || '').trim()
     const queryStart = text.indexOf('?')
     if (queryStart < 0) return text
-    return `${text.slice(0, queryStart)}${text.slice(queryStart).replace(/\\&/g, '&')}`
+    return `${text.slice(0, queryStart)}${text.slice(queryStart).replace(/\\&/g, '&').replace(/&amp;/gi, '&')}`
 }
 
 function fetchHtml(url, headers) {
@@ -108,6 +108,16 @@ async function parseDiscovery(noteId, queryString) {
 // 从 Video.media.stream 提取最优播放 URL（h265 无水印优先）
 function extractVideoUrl(video) {
     const candidates = []
+    const parseMaybeJson = (value) => {
+        if (typeof value !== 'string') return value
+        const text = value.trim()
+        if (!text.startsWith('{') && !text.startsWith('[')) return value
+        try {
+            return JSON.parse(text)
+        } catch {
+            return value
+        }
+    }
     const addUrl = (value) => {
         if (typeof value === 'string' && value.trim()) return value.trim()
         if (value && typeof value === 'object') {
@@ -139,10 +149,22 @@ function extractVideoUrl(video) {
         }
     }
 
-    const mediaSources = [video, video?.media, video?.mediaV2, video?.media?.video, video?.mediaV2?.video]
+    const mediaV2 = parseMaybeJson(video?.mediaV2)
+    const mediaSources = [
+        video,
+        video?.media,
+        mediaV2,
+        video?.videoPlayInfo,
+        video?.media?.video,
+        mediaV2?.video,
+    ]
     for (const source of mediaSources) {
         const stream = source?.stream
-        for (const codec of ['h265', 'h264', 'av1', 'h266']) {
+        // 小红书目前常见 EF4/EF5 编码键，历史版本也返回 h264/h265 等标准键。
+        // EF5（WEB_520）优先于 EF4（WEB_259），其余新键保持页面提供的顺序。
+        const codecNames = ['h265', 'h264', 'av1', 'h266', 'EF5', 'EF4', 'EF6', 'EF7']
+        const dynamicCodecNames = Object.keys(stream || {}).filter((codec) => !codecNames.includes(codec))
+        for (const codec of [...codecNames, ...dynamicCodecNames]) {
             const items = stream?.[codec]
             if (Array.isArray(items)) items.forEach(addItem)
         }

@@ -331,9 +331,9 @@ function generateCSS(colorData, viewport, options = {}) {
             .cover-container { position: relative; width: 100%; }
             .cover { width: 100%; display: block; object-fit: cover; border-radius: var(--radius-lg); }
             .cover.video { aspect-ratio: 16/9; }
-            /* 外部平台（抖音/小红书）视频封面不强制 16:9：横屏封面按原始比例展示，
-               竖屏封面整体可见（contain + 高度上限，两侧以底色填充），B 站卡片不受影响 */
-            .cover-container.external .cover.video { aspect-ratio: auto; height: auto; max-height: 640px; object-fit: contain; background: var(--color-soft-bg); }
+            /* 外部平台（抖音/小红书）视频封面按原始比例展示并铺满卡片宽度，
+               竖屏封面不再受高度上限约束，也不会在两侧留下空白。 */
+            .cover-container.external .cover.video { aspect-ratio: auto; height: auto; max-height: none; object-fit: contain; background: var(--color-soft-bg); }
             .cover.bangumi { aspect-ratio: 3/4; object-fit: cover; }
             .cover.live { aspect-ratio: 16/9; }
             .cover.article { aspect-ratio: auto; height: auto; }

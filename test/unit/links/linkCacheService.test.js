@@ -6,6 +6,13 @@ const config = require('../../../src/config')
 const linkCacheService = require('../../../src/services/link/linkCacheService')
 
 describe('linkCacheService', function () {
+    const compatState = config.__getMutableCompatStateForTests()
+    const originalTimeout = compatState.linkCacheTimeout
+
+    afterEach(function () {
+        compatState.linkCacheTimeout = originalTimeout
+        delete compatState.groupConfigs['external-cache-group']
+    })
     beforeEach(function () {
         linkCacheService.__resetForTests()
         delete config.__getMutableCompatStateForTests().groupConfigs['test-group']
@@ -58,5 +65,37 @@ describe('linkCacheService', function () {
         config.__getMutableCompatStateForTests().groupConfigs['test-group'].linkCacheTimeout = 10
 
         assert.strictEqual(linkCacheService.isCached(cacheKey), false)
+    })
+
+    it('抖音和小红书长短链共用 Dashboard 全局冷却并立即跟随修改', function () {
+        const types = ['douyin_video', 'douyin_note', 'douyin_short', 'xhs_note', 'xhs_short']
+        compatState.linkCacheTimeout = 60
+        for (const type of types) {
+            const key = `${type}|content-id|external-cache-group`
+            linkCacheService.markProcessed(key)
+            linkCacheService.__setCacheTimeForTests(key, Date.now() - 30000)
+            assert.strictEqual(linkCacheService.isCached(key), true)
+        }
+
+        compatState.linkCacheTimeout = 10
+        for (const type of types) {
+            assert.strictEqual(linkCacheService.isCached(`${type}|content-id|external-cache-group`), false)
+        }
+    })
+
+    it('外部链接优先使用 Dashboard 群级冷却；设为 0 后不再阻止重复解析', function () {
+        compatState.linkCacheTimeout = 1
+        compatState.groupConfigs['external-cache-group'] = { linkCacheTimeout: 60 }
+        for (const type of ['douyin_video', 'douyin_short', 'xhs_note', 'xhs_short']) {
+            const key = `${type}|content-id|external-cache-group`
+            linkCacheService.markProcessed(key)
+            linkCacheService.__setCacheTimeForTests(key, Date.now() - 30000)
+            assert.strictEqual(linkCacheService.isCached(key), true)
+        }
+
+        compatState.groupConfigs['external-cache-group'].linkCacheTimeout = 0
+        for (const type of ['douyin_video', 'douyin_short', 'xhs_note', 'xhs_short']) {
+            assert.strictEqual(linkCacheService.isCached(`${type}|content-id|external-cache-group`), false)
+        }
     })
 })

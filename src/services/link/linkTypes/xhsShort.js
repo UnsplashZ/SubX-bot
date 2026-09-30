@@ -7,6 +7,9 @@ const config = require('../../../config')
 
 module.exports = {
     type: 'xhs_short',
+    // 展开后的笔记可能包含短时签名视频地址。
+    cacheTtlSeconds: 60,
+    isCachedInfoUsable: xhsNoteHandler.isCachedInfoUsable,
 
     getCacheIdentity(descriptor) {
         return descriptor.id  // 短链 path token

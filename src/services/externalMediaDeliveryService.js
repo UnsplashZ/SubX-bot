@@ -188,8 +188,18 @@ async function downloadAndSend({ ws, groupId, url, label, author, platform,
     const filePath = path.join(dir, filename)
 
     try {
+        logger.logEvent('info', 'SEND', '', 'external-download-start', {
+            groupId, platform, durationSeconds
+        })
         await streamDownload(url, filePath, maxFileSizeBytes ?? 50 * 1024 * 1024, 3, 1, requestHeaders)
+        const { size } = await fsPromises.stat(filePath)
+        logger.logEvent('info', 'SEND', '', 'external-download-complete', {
+            groupId, platform, sizeBytes: size
+        })
         const sent = await deliverVideoFile(ws, groupId, filePath, label, author || platform)
+        logger.logEvent(sent ? 'info' : 'warn', 'SEND', '', 'external-video-delivery-result', {
+            groupId, platform, sent
+        })
 
         // 发送后延迟 5 分钟清理
         scheduleFileCleanup(filePath)
