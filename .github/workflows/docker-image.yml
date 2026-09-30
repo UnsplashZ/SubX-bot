@@ -22,7 +22,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -116,11 +116,13 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          # 这里指定使用我们刚才创建的专用 Dockerfile
-          file: ./Dockerfile.action
+          # 统一 Dockerfile：本地与 CI 共用，镜像源通过 build-arg 区分
+          file: ./Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           platforms: linux/amd64,linux/arm64
+          # zstd 压缩层，拉取体积更小（Docker 23+ 支持；旧客户端自动回退 gzip）
+          outputs: type=image,compression=zstd,compression-level=3,force-compression=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

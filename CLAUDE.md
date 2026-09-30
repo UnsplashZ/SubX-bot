@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SubX Bot (formerly Bili QQ Bot) is a Node.js + Python hybrid application that connects QQ groups to Bilibili content via an OneBot v11-compatible service (LLBot by default; NapCat and other OneBot services are also supported) or the QQ Official bot OpenAPI provider. It parses Bilibili URLs plus external platform links (Douyin and Xiaohongshu), generates preview cards using Puppeteer, and supports subscription monitoring.
 
-**Tech Stack:** Node.js 22.12+, Python 3.10+, Express 5, WebSocket, Puppeteer, bilibili-api-python 17.4.2
+**Tech Stack:** Node.js 22.12+ (Docker image ships Node 24), Python 3.10+, Express 5, WebSocket, Puppeteer, bilibili-api-python 17.4.2
 
 ## Project Structure
 
@@ -676,9 +676,12 @@ Fresh installs and existing-install updates report success only after `/api/read
 
 Dockerfile includes:
 - System fonts: Noto CJK, Symbola, Color Emoji
-- Chromium for Puppeteer
+- Chromium for Puppeteer (chrome-headless-shell, see the browser stage)
+- Static ffmpeg (johnvansickle/BtbN builds; no apt dependency chain)
 - Python 3.10+ with bilibili-api-python 17.4.2
 - Node.js dependencies
+
+The local and CI builds share a single parameterized Dockerfile (`Dockerfile.action` was merged into it); mirror selection is done through `NPM_REGISTRY` / `APT_MIRROR` / `PIP_INDEX_URL` build args.
 
 To rebuild:
 ```bash
