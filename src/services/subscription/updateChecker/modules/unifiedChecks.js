@@ -107,6 +107,44 @@ module.exports = {
             let lastVideoCreated = videoAnchor.videoCreated
             lastVideoCreated = normalizeTimestamp(lastVideoCreated)
 
+            // Media has its own ledger: retry failed attempts even after the card anchor advances.
+            // Scan the returned recent items so a newer post does not hide a failed upload.
+            if (!force) {
+                for (const video of videos) {
+                    try {
+                        const mediaRetryMap = await this.getUndeliveredGroupSourceMap({
+                            uid,
+                            contentType: 'video',
+                            contentId: video.bvid,
+                            contentTime: video.created,
+                            targetGroupSourceMap: normalizedTargetGroupSourceMap,
+                            deliveryPart: 'auto-download'
+                        })
+                        const retryGroups = this.getGroupIdsFromSourceMap(mediaRetryMap)
+                        if (retryGroups.length === 0) continue
+                        subLog('info', 'video-media-retry-start', { bvid: video.bvid, groupCount: retryGroups.length }, userScope)
+                        const retryInfo = await this.fetchWithGroupFallback(
+                            retryGroups,
+                            candidate => biliApi.getVideoInfo(video.bvid, candidate),
+                            `retryVideoInfo bvid=${video.bvid}`
+                        )
+                        if (retryInfo.res?.status !== 'success') continue
+                        const videoDownloadService = require('../../../videoDownloadService')
+                        await videoDownloadService.downloadAndSendToGroups(this.ws, retryGroups, video.bvid, retryInfo.res, 0, {
+                            recordDelivery: persistDelivery,
+                            contentType: 'video',
+                            contentId: video.bvid,
+                            deliveryPart: 'auto-download'
+                        })
+                    } catch (error) {
+                        subLog('error', 'video-media-retry-failed', {
+                            bvid: video.bvid,
+                            error: logger.getErrorMessage(error)
+                        }, userScope)
+                    }
+                }
+            }
+
             // 首次检查：记录最新视频但不推送
             if (!lastVideoId && !force) {
                 if (persistState) {
@@ -240,17 +278,21 @@ module.exports = {
                         canAdvanceCurrentVideo = decision.action === 'advance'
 
                         // 订阅推送后下载视频一次，目标集必须与本次实际推送一致。
-                        if (canAdvanceCurrentVideo && effectiveTargetGroups.length > 0) {
+                        const mediaTargetGroups = [...new Set([
+                            ...(notifyResult?.successGroups || []),
+                            ...(notifyResult?.dedupSkippedGroups || [])
+                        ].map(String))].filter(gid => effectiveTargetGroups.includes(gid))
+                        if (canAdvanceCurrentVideo && mediaTargetGroups.length > 0) {
                             const videoDownloadService = require('../../../videoDownloadService')
                             try {
                                 await videoDownloadService.downloadAndSendToGroups(
                                     this.ws,
-                                    effectiveTargetGroups,
+                                    mediaTargetGroups,
                                     bvid,
                                     info,
                                     0,
                                     {
-                                        recordDelivery: true,
+                                        recordDelivery: persistDelivery,
                                         contentType: 'video',
                                         contentId: bvid,
                                         deliveryPart: 'auto-download'
@@ -262,7 +304,7 @@ module.exports = {
                                     error: logger.getErrorMessage(e)
                                 }, userScope)
                             }
-                        } else {
+                        } else if (!canAdvanceCurrentVideo) {
                             subLog('warn', 'video-state-advance-skipped', {
                                 name,
                                 source,

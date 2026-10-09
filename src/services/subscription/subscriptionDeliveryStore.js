@@ -21,6 +21,10 @@ function clone(value) {
     return JSON.parse(JSON.stringify(value))
 }
 
+function isCovered(record) {
+    return Boolean(record && (record.status === 'delivered' || record.status === 'skipped'))
+}
+
 class SubscriptionDeliveryStore {
     constructor(options = {}) {
         this.dataDir = options.dataDir || path.join(process.cwd(), 'data')
@@ -90,7 +94,7 @@ class SubscriptionDeliveryStore {
         await this._operationChain
         await this.ensureLoaded()
         const key = this.makeKey(groupId, type, contentId, deliveryPart)
-        return Boolean(key && this.records[key])
+        return Boolean(key && isCovered(this.records[key]))
     }
 
     async getUndeliveredGroups(groupIds, type, contentId, deliveryPart = 'main') {
@@ -99,7 +103,16 @@ class SubscriptionDeliveryStore {
         const groups = Array.isArray(groupIds) ? groupIds : []
         return groups
             .map(groupId => normalizePart(groupId))
-            .filter(groupId => groupId && !this.records[this.makeKey(groupId, type, contentId, deliveryPart)])
+            .filter(groupId => groupId && !isCovered(this.records[this.makeKey(groupId, type, contentId, deliveryPart)]))
+    }
+
+    async getRetryableGroups(groupIds, type, contentId, deliveryPart = 'auto-download') {
+        await this._operationChain
+        await this.ensureLoaded()
+        return (groupIds || []).map(normalizePart).filter(groupId => {
+            const record = this.records[this.makeKey(groupId, type, contentId, deliveryPart)]
+            return record && ['pending', 'failed'].includes(record.status)
+        })
     }
 
     async getDeliveryCoverage(groupIds, type, contentId, deliveryPart = 'main') {
@@ -108,11 +121,14 @@ class SubscriptionDeliveryStore {
         const groups = Array.isArray(groupIds) ? groupIds : []
         const deliveredGroups = []
         const undeliveredGroups = []
+        let hasAnyRecord = false
 
         for (const groupId of groups) {
             const normalizedGroupId = normalizePart(groupId)
             if (!normalizedGroupId) continue
-            if (this.records[this.makeKey(normalizedGroupId, type, contentId, deliveryPart)]) {
+            const record = this.records[this.makeKey(normalizedGroupId, type, contentId, deliveryPart)]
+            if (record) hasAnyRecord = true
+            if (isCovered(record)) {
                 deliveredGroups.push(normalizedGroupId)
             } else {
                 undeliveredGroups.push(normalizedGroupId)
@@ -122,7 +138,7 @@ class SubscriptionDeliveryStore {
         return {
             deliveredGroups,
             undeliveredGroups,
-            hasAnyRecord: deliveredGroups.length > 0
+            hasAnyRecord
         }
     }
 
@@ -147,6 +163,11 @@ class SubscriptionDeliveryStore {
     }
 
     async recordDeliveredBatch(records) {
+        const input = Array.isArray(records) ? records : []
+        return this.recordDeliveryBatch(input.map(record => ({ ...record, status: 'delivered' })))
+    }
+
+    async recordDeliveryBatch(records) {
         return this._enqueueMutation(async () => {
             const input = Array.isArray(records) ? records : []
             let changed = 0
@@ -236,6 +257,7 @@ class SubscriptionDeliveryStore {
             type,
             contentId,
             deliveryPart,
+            status: ['pending', 'failed', 'skipped', 'delivered'].includes(record.status) ? record.status : 'delivered',
             deliveredAt: normalizeTime(record.deliveredAt, this.now()),
             meta: record.meta && typeof record.meta === 'object' && !Array.isArray(record.meta)
                 ? { ...record.meta }

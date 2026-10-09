@@ -1,6 +1,10 @@
 'use strict'
 
 const assert = require('assert')
+const fs = require('fs').promises
+const os = require('os')
+const path = require('path')
+const { SubscriptionDeliveryStore } = require('../../../src/services/subscription/subscriptionDeliveryStore')
 
 const updateChecker = require('../../../src/services/subscription/updateChecker')
 const deps = require('../../../src/services/subscription/updateChecker/adapters/deps')
@@ -431,4 +435,42 @@ describe('updateChecker unified state advance policy', function () {
 
         assert.deepStrictEqual(downloadedTargets, [['B']])
     })
+
+    for (const newerPostExists of [false, true]) {
+        it(`上传失败后只补发失败群视频且不重复卡片（更新投稿=${newerPostExists}）`, async function () {
+            const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sub-media-retry-'))
+            try {
+                const store = new SubscriptionDeliveryStore({ dataDir: tmpDir })
+                deps.subscriptionDeliveryStore = store
+                const groups = ['A', 'B', 'C', 'legacy']
+                await store.recordDeliveredBatch(groups.map(groupId => ({ groupId, type: 'video', contentId: 'BV_NEW' })))
+                await store.recordDeliveryBatch(['failed', 'delivered', 'skipped'].map((status, i) => ({
+                    groupId: groups[i], type: 'video', contentId: 'BV_NEW', deliveryPart: 'auto-download', status
+                })))
+                const videos = newerPostExists
+                    ? [{ bvid: 'BV_LATEST', created: 300 }, { bvid: 'BV_NEW', created: 200 }]
+                    : [{ bvid: 'BV_NEW', created: 200 }]
+                await store.recordDeliveredBatch(groups.map(groupId => ({ groupId, type: 'video', contentId: videos[0].bvid })))
+                deps.subscriptionStateStore = { getUserState: () => ({ video: { videoId: videos[0].bvid, lastCreated: videos[0].created } }) }
+                deps.biliApi.getUserVideos = async () => ({ status: 'success', data: { videos } })
+                deps.biliApi.getVideoInfo = async () => ({ status: 'success', data: { title: 'video' } })
+                let cards = 0
+                updateChecker.notifyGroupsWithImageAndCache = async () => { cards++; return { successGroups: [] } }
+                const attempts = []
+                videoDownloadService.downloadAndSendToGroups = async (_ws, targets, bvid, _info, _page, options) => {
+                    attempts.push({ targets, bvid })
+                    assert.equal(options.recordDelivery, true)
+                    await store.recordDeliveredBatch(targets.map(groupId => ({ groupId, type: 'video', contentId: bvid, deliveryPart: options.deliveryPart })))
+                }
+                const user = { uid: '123', name: 'tester', targetGroups: groups, source: 'manual' }
+                await updateChecker.checkUserVideoUnified(user)
+                await store.reload()
+                await updateChecker.checkUserVideoUnified(user)
+                assert.deepStrictEqual(attempts, [{ targets: ['A'], bvid: 'BV_NEW' }])
+                assert.equal(cards, 0)
+            } finally {
+                await fs.rm(tmpDir, { recursive: true, force: true })
+            }
+        })
+    }
 })

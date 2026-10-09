@@ -22,6 +22,9 @@ function sendLog(level, message, fields = {}, scope = NOTIFICATION_SCOPE) {
 
 function trackRuntimePromise(promise) {
     const context = botOperationRegistry.getContext()
+    // Command reply callers may deliberately ignore the return value. Keep the
+    // original rejecting promise for awaited callers without an unhandled rejection.
+    promise.catch(() => {})
     return context?.trackPromise ? context.trackPromise(promise) : promise
 }
 
@@ -45,6 +48,22 @@ function getNapcatWebSocket(handle = null) {
         return handle.ws;
     }
     return handle;
+}
+
+function getMessageActionTimeoutMs(message) {
+    const chain = Array.isArray(message) ? message : []
+    return chain.some(item => item?.type === 'video')
+        ? 5 * 60 * 1000
+        : 15 * 1000
+}
+
+function assertActionSuccess(response, action) {
+    if (!response || response.status !== 'ok' ||
+        (response.retcode !== undefined && response.retcode !== null && Number(response.retcode) !== 0)) {
+        const detail = response?.wording || response?.message || ''
+        throw new Error(`${action} failed${response?.retcode != null ? ` with retcode ${response.retcode}` : ''}${detail ? `: ${detail}` : ''}`)
+    }
+    return response
 }
 
 /**
@@ -566,7 +585,7 @@ class NotificationService {
                 groupId,
                 reason: 'ws_missing'
             });
-            return;
+            return { ok: false, status: 'failed', reason: 'ws_missing' };
         }
 
         try {
@@ -590,12 +609,62 @@ class NotificationService {
                 payloadPreview: JSON.stringify(payload, null, 2).substring(0, 500)
             });
 
-            ws.send(JSON.stringify(payload));
-            sendLog('info', 'group-send-ok', {
-                source: normalizeSource(logPrefix),
-                groupId
-            });
-            return { ok: true, status: 'ok', provider: 'napcat' };
+            return trackRuntimePromise(this.callAction(
+                ws,
+                'send_group_msg',
+                payload.params,
+                logPrefix,
+                getMessageActionTimeoutMs(messageChain)
+            ).then((response) => {
+                assertActionSuccess(response, 'send_group_msg')
+                sendLog('info', 'group-send-ok', {
+                    source: normalizeSource(logPrefix),
+                    groupId,
+                    retcode: response?.retcode ?? 0
+                });
+                return { ok: true, status: 'ok', provider: 'napcat', response };
+            }).catch((e) => {
+                sendLog('error', 'group-send-failed', {
+                    source: normalizeSource(logPrefix),
+                    groupId,
+                    error: logger.getErrorMessage(e),
+                    messagePreview: JSON.stringify(message, null, 2).substring(0, 500)
+                });
+
+                if (!enableFallback) throw e
+
+                return this.callAction(
+                    ws,
+                    'send_group_msg',
+                    {
+                        group_id: groupId,
+                        message: [{ type: 'text', data: { text: '消息发送失败，请查看日志' } }]
+                    },
+                    logPrefix,
+                    15 * 1000
+                ).then((fallbackResponse) => {
+                    assertActionSuccess(fallbackResponse, 'send_group_msg fallback')
+                    sendLog('warn', 'group-send-fallback-used', {
+                        source: normalizeSource(logPrefix),
+                        groupId,
+                        reason: 'send_failed'
+                    })
+                    return {
+                        ok: false,
+                        status: 'failed',
+                        fallbackUsed: true,
+                        fallbackReason: 'send_failed',
+                        response: fallbackResponse
+                    }
+                }).catch((fallbackError) => {
+                    sendLog('error', 'group-send-fallback-failed', {
+                        source: normalizeSource(logPrefix),
+                        groupId,
+                        error: logger.getErrorMessage(fallbackError)
+                    })
+                    throw fallbackError
+                })
+            }));
         } catch (e) {
             sendLog('error', 'group-send-failed', {
                 source: normalizeSource(logPrefix),
@@ -614,7 +683,11 @@ class NotificationService {
                             message: [{ type: 'text', data: { text: '消息发送失败，请查看日志' } }]
                         }
                     };
-                    ws.send(JSON.stringify(fallbackPayload));
+                    return trackRuntimePromise(this.callAction(ws, fallbackPayload.action, fallbackPayload.params, logPrefix, 15000)
+                        .then(response => {
+                            assertActionSuccess(response, 'send_group_msg fallback')
+                            return { ok: false, status: 'failed', fallbackUsed: true, fallbackReason: 'send_failed' }
+                        }));
                 } catch (fallbackError) {
                     sendLog('error', 'group-send-fallback-failed', {
                         source: normalizeSource(logPrefix),
@@ -693,7 +766,7 @@ class NotificationService {
                 userId,
                 reason: 'ws_missing'
             });
-            return;
+            return { ok: false, status: 'failed', reason: 'ws_missing' };
         }
 
         try {
@@ -717,12 +790,61 @@ class NotificationService {
                 payloadPreview: JSON.stringify(payload, null, 2).substring(0, 500)
             });
 
-            ws.send(JSON.stringify(payload));
-            sendLog('info', 'private-send-ok', {
-                source: normalizeSource(logPrefix),
-                userId
-            });
-            return { ok: true, status: 'ok', provider: 'napcat' };
+            return trackRuntimePromise(this.callAction(
+                ws,
+                'send_private_msg',
+                payload.params,
+                logPrefix,
+                getMessageActionTimeoutMs(messageChain)
+            ).then((response) => {
+                assertActionSuccess(response, 'send_private_msg')
+                sendLog('info', 'private-send-ok', {
+                    source: normalizeSource(logPrefix),
+                    userId,
+                    retcode: response?.retcode ?? 0
+                });
+                return { ok: true, status: 'ok', provider: 'napcat', response };
+            }).catch((e) => {
+                sendLog('error', 'private-send-failed', {
+                    source: normalizeSource(logPrefix),
+                    userId,
+                    error: logger.getErrorMessage(e)
+                });
+
+                if (!enableFallback) throw e
+
+                return this.callAction(
+                    ws,
+                    'send_private_msg',
+                    {
+                        user_id: userId,
+                        message: [{ type: 'text', data: { text: '消息发送失败，请查看日志' } }]
+                    },
+                    logPrefix,
+                    15 * 1000
+                ).then((fallbackResponse) => {
+                    assertActionSuccess(fallbackResponse, 'send_private_msg fallback')
+                    sendLog('warn', 'private-send-fallback-used', {
+                        source: normalizeSource(logPrefix),
+                        userId,
+                        reason: 'send_failed'
+                    })
+                    return {
+                        ok: false,
+                        status: 'failed',
+                        fallbackUsed: true,
+                        fallbackReason: 'send_failed',
+                        response: fallbackResponse
+                    }
+                }).catch((fallbackError) => {
+                    sendLog('error', 'private-send-fallback-failed', {
+                        source: normalizeSource(logPrefix),
+                        userId,
+                        error: logger.getErrorMessage(fallbackError)
+                    })
+                    throw fallbackError
+                })
+            }));
         } catch (e) {
             sendLog('error', 'private-send-failed', {
                 source: normalizeSource(logPrefix),
@@ -739,7 +861,11 @@ class NotificationService {
                             message: [{ type: 'text', data: { text: '消息发送失败，请查看日志' } }]
                         }
                     };
-                    ws.send(JSON.stringify(fallbackPayload));
+                    return trackRuntimePromise(this.callAction(ws, fallbackPayload.action, fallbackPayload.params, logPrefix, 15000)
+                        .then(response => {
+                            assertActionSuccess(response, 'send_private_msg fallback')
+                            return { ok: false, status: 'failed', fallbackUsed: true, fallbackReason: 'send_failed' }
+                        }));
                 } catch (fallbackError) {
                     sendLog('error', 'private-send-fallback-failed', {
                         source: normalizeSource(logPrefix),

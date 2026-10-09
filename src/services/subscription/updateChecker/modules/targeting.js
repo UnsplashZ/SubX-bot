@@ -320,6 +320,7 @@ module.exports = {
             contentType,
             contentId,
             contentTime = null,
+            deliveryPart = 'main',
             targetGroupSourceMap,
             ledgerTargetGroupSourceMap = targetGroupSourceMap
         } = params
@@ -329,9 +330,13 @@ module.exports = {
 
         let undeliveredGroups = null
         const store = deps.subscriptionDeliveryStore
-        if (store && typeof store.getDeliveryCoverage === 'function') {
+        if (deliveryPart === 'auto-download') {
+            // Only retry explicit attempts; missing legacy media records are not evidence of failure.
+            if (!store || typeof store.getRetryableGroups !== 'function') return new Map()
+            undeliveredGroups = await store.getRetryableGroups(groupIds, contentType, String(contentId), deliveryPart)
+        } else if (store && typeof store.getDeliveryCoverage === 'function') {
             const coverageGroupIds = ledgerGroupIds.length > 0 ? ledgerGroupIds : groupIds
-            const coverage = await store.getDeliveryCoverage(coverageGroupIds, contentType, String(contentId))
+            const coverage = await store.getDeliveryCoverage(coverageGroupIds, contentType, String(contentId), deliveryPart)
             // Ledger retry is only valid after at least one target group has a
             // persistent delivery/tombstone record. Legacy anchors and expired
             // ledgers must not be interpreted as "all groups need historical replay".
@@ -340,12 +345,12 @@ module.exports = {
             }
             undeliveredGroups = coverage.undeliveredGroups
         } else if (store && typeof store.getUndeliveredGroups === 'function') {
-            undeliveredGroups = await store.getUndeliveredGroups(groupIds, contentType, String(contentId))
+            undeliveredGroups = await store.getUndeliveredGroups(groupIds, contentType, String(contentId), deliveryPart)
         } else if (store && typeof store.hasDelivered === 'function') {
             undeliveredGroups = []
             let hasAnyRecord = false
             for (const groupId of groupIds) {
-                const delivered = await store.hasDelivered(String(groupId), contentType, String(contentId))
+                const delivered = await store.hasDelivered(String(groupId), contentType, String(contentId), deliveryPart)
                 if (delivered) {
                     hasAnyRecord = true
                 } else {

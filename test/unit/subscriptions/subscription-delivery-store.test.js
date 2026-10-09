@@ -126,4 +126,20 @@ describe('subscription delivery store', function () {
         assert.strictEqual(await store.hasDelivered('old', 'article', 'cv1'), false)
         assert.strictEqual(await store.hasDelivered('fresh', 'article', 'cv1'), true)
     })
+
+    it('失败与 pending 不算投递成功，reload 后只补偿明确尝试过的群', async function () {
+        const store = await createStore(this)
+        await store.recordDeliveryBatch(['pending', 'failed', 'skipped', 'delivered'].map((status, index) => ({
+            groupId: String(index), type: 'video', contentId: 'BV1', deliveryPart: 'auto-download', status
+        })))
+        await store.reload()
+        assert.deepStrictEqual(await store.getRetryableGroups(['0', '1', '2', '3', '4'], 'video', 'BV1'), ['0', '1'])
+        assert.equal(await store.hasDelivered('0', 'video', 'BV1', 'auto-download'), false)
+        assert.equal(await store.hasDelivered('1', 'video', 'BV1', 'auto-download'), false)
+        assert.deepStrictEqual(await store.getDeliveryCoverage(['0', '1', '2', '3'], 'video', 'BV1', 'auto-download'), {
+            deliveredGroups: ['2', '3'], undeliveredGroups: ['0', '1'], hasAnyRecord: true
+        })
+        await store.recordDeliveredBatch([{ groupId: '1', type: 'video', contentId: 'BV1', deliveryPart: 'auto-download' }])
+        assert.deepStrictEqual(await store.getRetryableGroups(['0', '1'], 'video', 'BV1'), ['0'])
+    })
 })

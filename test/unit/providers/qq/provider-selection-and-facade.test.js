@@ -8,6 +8,24 @@ const { createQqProvider, normalizeProviderName } = require('../../../../src/pro
 const qqRuntime = require('../../../../src/providers/qq/runtime')
 const notificationService = require('../../../../src/services/notificationService')
 
+function createAckWebSocket(sent, { failPrimary = false } = {}) {
+    const ws = new EventEmitter()
+    ws.readyState = 1
+    ws.send = (raw, callback) => {
+        const payload = JSON.parse(raw)
+        sent.push(payload)
+        callback?.(null)
+        process.nextTick(() => {
+            ws.emit('message', JSON.stringify({
+                status: failPrimary && sent.length === 1 ? 'failed' : 'ok',
+                retcode: failPrimary && sent.length === 1 ? 102902 : 0,
+                echo: payload.echo
+            }))
+        })
+    }
+    return ws
+}
+
 describe('QQ provider selection and notification facade', () => {
     afterEach(() => {
         qqRuntime.clearCurrentProvider()
@@ -46,51 +64,36 @@ describe('QQ provider selection and notification facade', () => {
         assert.equal(sent[0].metadata.msg_seq, 5)
     })
 
-    it('keeps NapCat send payload compatible', () => {
+    it('keeps NapCat send payload compatible', async () => {
         const sent = []
-        const ws = {
-            readyState: 1,
-            send(payload) {
-                sent.push(JSON.parse(payload))
-            },
-            on() {}
-        }
+        const ws = createAckWebSocket(sent)
 
-        notificationService.sendGroupMessage(ws, 123, [
+        await notificationService.sendGroupMessage(ws, 123, [
             { type: 'text', data: { text: 'hello' } }
         ], 'test', false)
-        notificationService.sendPrivateMessage(ws, 456, 'hi', 'test', false)
+        await notificationService.sendPrivateMessage(ws, 456, 'hi', 'test', false)
 
-        assert.deepEqual(sent[0], {
-            action: 'send_group_msg',
-            params: {
-                group_id: 123,
-                message: [{ type: 'text', data: { text: 'hello' } }]
-            }
+        assert.equal(sent[0].action, 'send_group_msg')
+        assert.deepEqual(sent[0].params, {
+            group_id: 123,
+            message: [{ type: 'text', data: { text: 'hello' } }]
         })
-        assert.deepEqual(sent[1], {
-            action: 'send_private_msg',
-            params: {
-                user_id: 456,
-                message: [{ type: 'text', data: { text: 'hi' } }]
-            }
+        assert.equal(sent[1].action, 'send_private_msg')
+        assert.deepEqual(sent[1].params, {
+            user_id: 456,
+            message: [{ type: 'text', data: { text: 'hi' } }]
         })
     })
 
-    it('routes NapCat provider handles through their WebSocket', () => {
+    it('routes NapCat provider handles through their WebSocket', async () => {
         const sent = []
         const provider = {
             id: 'napcat',
-            ws: {
-                readyState: 1,
-                send(payload) {
-                    sent.push(JSON.parse(payload))
-                }
-            }
+            ws: createAckWebSocket(sent)
         }
 
-        const groupResult = notificationService.sendGroupMessage(provider, 123, 'group', 'test', false)
-        const privateResult = notificationService.sendPrivateMessage(provider, 456, 'private', 'test', false)
+        const groupResult = await notificationService.sendGroupMessage(provider, 123, 'group', 'test', false)
+        const privateResult = await notificationService.sendPrivateMessage(provider, 456, 'private', 'test', false)
 
         assert.equal(groupResult.ok, true)
         assert.equal(privateResult.ok, true)
@@ -98,45 +101,56 @@ describe('QQ provider selection and notification facade', () => {
         assert.equal(sent[1].action, 'send_private_msg')
     })
 
-    it('propagates NapCat send failures when fallback is disabled', () => {
+    it('propagates NapCat send failures when fallback is disabled', async () => {
         const provider = {
             id: 'napcat',
-            ws: {
-                readyState: 1,
-                send() {
-                    throw new Error('socket write failed')
-                }
-            }
+            ws: createAckWebSocket([], { failPrimary: true })
         }
 
-        assert.throws(
+        await assert.rejects(
             () => notificationService.sendGroupMessage(provider, 123, 'group', 'test', false),
-            /socket write failed/
-        )
-        assert.throws(
-            () => notificationService.sendPrivateMessage(provider, 456, 'private', 'test', false),
-            /socket write failed/
+            /send_group_msg failed/
         )
     })
 
-    it('reports NapCat fallback use instead of false success', () => {
-        let sends = 0
+    it('reports NapCat fallback use instead of false success', async () => {
         const provider = {
             id: 'napcat',
-            ws: {
-                readyState: 1,
-                send() {
-                    sends += 1
-                    if (sends === 1) throw new Error('primary failed')
-                }
-            }
+            ws: createAckWebSocket([], { failPrimary: true })
         }
 
-        const result = notificationService.sendGroupMessage(provider, 123, 'group', 'test', true)
+        const result = await notificationService.sendGroupMessage(provider, 123, 'group', 'test', true)
 
-        assert.equal(sends, 2)
         assert.equal(result.ok, false)
         assert.equal(result.fallbackUsed, true)
+    })
+
+    it('waits for matching video acknowledgement and rejects on socket close', async () => {
+        const ws = new EventEmitter()
+        ws.readyState = 1
+        let payload
+        ws.send = raw => { payload = JSON.parse(raw) }
+        let settled = false
+        const send = notificationService.sendGroupMessage(ws, 123, [{ type: 'video', data: { file: 'file:///tmp/test.mp4' } }], 'test', false)
+        send.then(() => { settled = true }, () => { settled = true })
+        ws.emit('message', JSON.stringify({ status: 'ok', retcode: 0, echo: 'unrelated' }))
+        await new Promise(resolve => setImmediate(resolve))
+        assert.equal(settled, false)
+        ws.emit('message', JSON.stringify({ status: 'ok', retcode: 0, echo: payload.echo }))
+        assert.equal((await send).ok, true)
+        const closedSend = notificationService.sendPrivateMessage(ws, 456, 'hello', 'test', false)
+        ws.emit('close')
+        await assert.rejects(closedSend, /WebSocket closed/)
+    })
+
+    it('rejects private uploads with nonzero retcode even when status says ok', async () => {
+        const ws = new EventEmitter()
+        ws.readyState = 1
+        ws.send = raw => {
+            const payload = JSON.parse(raw)
+            process.nextTick(() => ws.emit('message', JSON.stringify({ status: 'ok', retcode: 1200, wording: 'upload failed', echo: payload.echo })))
+        }
+        await assert.rejects(notificationService.sendPrivateMessage(ws, 456, 'hello', 'test', false), /1200: upload failed/)
     })
 
     it('settles broadcast failures for both providers', async () => {
@@ -144,6 +158,7 @@ describe('QQ provider selection and notification facade', () => {
             id: 'napcat',
             ws: {
                 readyState: 1,
+                on() {},
                 send() {
                     throw new Error('napcat failed')
                 }

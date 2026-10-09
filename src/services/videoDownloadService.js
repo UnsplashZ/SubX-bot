@@ -484,7 +484,7 @@ class VideoDownloadService {
      * 发送视频消息（群聊/私聊均使用普通消息）
      * @returns {boolean} 是否发送成功
      */
-    async _sendForwardMessage(ws, groupId, result, scope = DOWNLOAD_SCOPE, paths = this.currentPaths) {
+    async _sendForwardMessage(ws, groupId, result, scope = DOWNLOAD_SCOPE, paths = this.currentPaths, onFailure = null) {
         const activeWs = ws
         const isOfficialProvider = isOfficialTransport(activeWs)
         if (!isQqTransportReady(activeWs)) {
@@ -516,7 +516,7 @@ class VideoDownloadService {
                 { type: 'text', data: { text: `「${result.title}」- ${result.owner}` } },
                 { type: 'video', data: { file: videoFile } }
             ], 'VideoDownload', false)
-            if (response?.fallbackUsed) {
+            if (response?.fallbackUsed || response?.ok === false) {
                 sendLog('warn', 'video-send-fallback-used', {
                     userId: realUserId,
                     title: result.title,
@@ -532,6 +532,7 @@ class VideoDownloadService {
                 }, scope)
                 return true
             } catch (e) {
+                onFailure?.(e)
                 sendLog('error', 'video-send-failed', {
                     userId: realUserId,
                     title: result.title,
@@ -556,7 +557,7 @@ class VideoDownloadService {
                 { type: 'text', data: { text: `「${result.title}」- ${result.owner}` } },
                 { type: 'video', data: { file: videoFile } }
             ], 'VideoDownload', false)
-            if (response?.fallbackUsed) {
+            if (response?.fallbackUsed || response?.ok === false) {
                 sendLog('warn', 'video-send-fallback-used', {
                     groupId,
                     title: result.title,
@@ -572,6 +573,7 @@ class VideoDownloadService {
             }, scope)
             return true
         } catch (e) {
+            onFailure?.(e)
             sendLog('error', 'video-send-failed', {
                 groupId,
                 title: result.title,
@@ -649,7 +651,25 @@ class VideoDownloadService {
         return this.runDownloadTask(
             `subscription:${bvid}:${pageIndex}`,
             ws,
-            (taskContext) => this._downloadAndSendToGroups(taskContext, groupIds, bvid, videoInfo, pageIndex, options)
+            async (taskContext) => {
+                let result = await this._downloadAndSendToGroups(taskContext, groupIds, bvid, videoInfo, pageIndex, options)
+                const attemptedGroups = result?.attemptedGroups || []
+                const sentGroups = [...(result?.sentGroups || [])]
+                // QQ can reject large Highway uploads. Step down only for the
+                // explicit rejection, retaining acknowledged groups and bounded retries.
+                for (const resolution of ['720p', '480p', '360p']) {
+                    if (!result?.uploadRejectedGroups?.length) break
+                    if (RESOLUTION_ORDER.indexOf(resolution) >= RESOLUTION_ORDER.indexOf(result.resolution)) continue
+                    sendLog('warn', 'video-upload-resolution-retry', { bvid, resolution, groupCount: result.uploadRejectedGroups.length })
+                    const retryResult = await this._downloadAndSendToGroups(taskContext, result.uploadRejectedGroups, bvid, videoInfo, pageIndex, {
+                        ...options, resolutionLimit: resolution
+                    })
+                    if (!retryResult) break
+                    result = retryResult
+                    sentGroups.push(...(result?.sentGroups || []))
+                }
+                return result ? { ...result, ok: sentGroups.length > 0, sentGroups: [...new Set(sentGroups)], attemptedGroups } : result
+            }
         )
     }
 
@@ -662,7 +682,24 @@ class VideoDownloadService {
                 latest
             })
         }
+        if (options.recordDelivery) {
+            groupIds = await subscriptionDeliveryStore.getUndeliveredGroups(
+                groupIds, options.contentType || 'video', String(options.contentId || bvid), options.deliveryPart || 'auto-download'
+            )
+        }
+        const recordStatus = async (groups, status, reason = '') => {
+            if (!options.recordDelivery || groups.length === 0) return
+            await subscriptionDeliveryStore.recordDeliveryBatch(groups.map(groupId => ({
+                groupId: String(groupId),
+                type: options.contentType || 'video',
+                contentId: String(options.contentId || bvid),
+                deliveryPart: options.deliveryPart || 'auto-download',
+                status,
+                meta: { source: 'videoDownloadService', reason }
+            })))
+        }
         const enabledGroups = groupIds.filter(gid => canReceiveSubscriptionVideoDownload(gid))
+        await recordStatus(groupIds.filter(gid => !enabledGroups.includes(gid)), 'skipped', 'download_disabled')
         if (enabledGroups.length === 0) {
             finishMetric(true, '无目标')
             return
@@ -670,6 +707,14 @@ class VideoDownloadService {
 
         const downloadKey = `subscription:${bvid}:${pageIndex}`
         const taskScope = logger.createScope('task', 'subscription-download', bvid || 'unknown', pageIndex + 1)
+
+        // Mark attempts before any transient capacity/disk guard so the next poll can retry them.
+        const duration = this._getEffectiveDuration(videoInfo, pageIndex)
+        const filteredGroups = enabledGroups.filter(gid => {
+            const maxDur = getVideoDownloadMaxDurationForGroup(gid)
+            return maxDur === 0 || duration <= maxDur
+        })
+        await recordStatus(enabledGroups.filter(gid => !filteredGroups.includes(gid)), 'skipped', 'duration_exceeded')
 
         if (_inProgressDownloads.has(downloadKey)) {
             sendLog('info', 'download-skipped', {
@@ -680,6 +725,11 @@ class VideoDownloadService {
             finishMetric(true, 'duplicate_subscription')
             return
         }
+
+        await recordStatus(filteredGroups, 'pending')
+
+        // Ledger persistence yields; another task may acquire the same key meanwhile.
+        if (_inProgressDownloads.has(downloadKey)) return
 
         if (this._activeDownloads >= MAX_CONCURRENT_DOWNLOADS) {
             sendLog('warn', 'download-skipped', {
@@ -693,11 +743,6 @@ class VideoDownloadService {
         }
 
         // 按群独立过滤：只向时长限制内的群发送
-        const duration = this._getEffectiveDuration(videoInfo, pageIndex)
-        const filteredGroups = enabledGroups.filter(gid => {
-            const maxDur = getVideoDownloadMaxDurationForGroup(gid)
-            return maxDur === 0 || duration <= maxDur
-        })
         if (filteredGroups.length === 0) {
             sendLog('info', 'download-skipped', {
                 bvid,
@@ -709,131 +754,134 @@ class VideoDownloadService {
             return
         }
 
-        if (!await this._hasDiskSpace(taskContext.paths)) {
-            sendLog('warn', 'download-skipped', {
-                bvid,
-                pageIndex,
-                reason: 'disk_space_full'
-            }, taskScope)
-            const rootAdminQQ = config.getRootAdminQQ()
-            const notifyTransport = taskContext.transport
-            if (rootAdminQQ && isQqTransportReady(notifyTransport)) {
-                await notificationService.sendPrivateMessage(notifyTransport, rootAdminQQ, [
-                    { type: 'text', data: { text: `⚠️ 下载目录空间不足（超过 5GB），已跳过订阅视频 ${bvid} 的下载。可使用 /清理下载 释放空间` } }
-                ], 'VideoDownload', false)
-            }
-            finishMetric(true, 'disk_space_full')
-            return
-        }
-
-        // 取所有目标群中最高的分辨率，以满足要求最高的群
-        const resolution = filteredGroups.reduce((best, gid) => {
-            const res = getVideoDownloadResolutionForGroup(gid)
-            return RESOLUTION_ORDER.indexOf(res) > RESOLUTION_ORDER.indexOf(best) ? res : best
-        }, '360p')
-
-        sendLog('info', 'download-start', {
-            bvid,
-            pageIndex,
-            resolution,
-            groupCount: filteredGroups.length
-        }, taskScope)
-
-        const meta = videoInfo?.data ? {
-            title: videoInfo.data.title,
-            owner: videoInfo.data.owner?.name ?? 'Unknown',
-            duration: videoInfo.data.duration ?? 0,
-            total_pages: videoInfo.data.pages?.length ?? 1,
-        } : null
-
         this._activeDownloads++
         _inProgressDownloads.add(downloadKey)
-        let result
         try {
-            result = await biliApi.downloadVideo(bvid, pageIndex, resolution, filteredGroups[0], meta, {
-                taskId: taskContext.taskId,
-                signal: taskContext.abortSignal,
-                timeoutMs: DOWNLOAD_TIMEOUT_MS
-            })
-        } catch (e) {
-            sendLog('error', 'download-fail', {
+            if (!await this._hasDiskSpace(taskContext.paths)) {
+                sendLog('warn', 'download-skipped', {
+                    bvid,
+                    pageIndex,
+                    reason: 'disk_space_full'
+                }, taskScope)
+                const rootAdminQQ = config.getRootAdminQQ()
+                const notifyTransport = taskContext.transport
+                if (rootAdminQQ && isQqTransportReady(notifyTransport)) {
+                    await notificationService.sendPrivateMessage(notifyTransport, rootAdminQQ, [
+                        { type: 'text', data: { text: `⚠️ 下载目录空间不足（超过 5GB），已跳过订阅视频 ${bvid} 的下载。可使用 /清理下载 释放空间` } }
+                    ], 'VideoDownload', false)
+                }
+                finishMetric(true, 'disk_space_full')
+                return
+            }
+
+            // 取所有目标群中最高的分辨率，以满足要求最高的群
+            let resolution = filteredGroups.reduce((best, gid) => {
+                const res = getVideoDownloadResolutionForGroup(gid)
+                return RESOLUTION_ORDER.indexOf(res) > RESOLUTION_ORDER.indexOf(best) ? res : best
+            }, '360p')
+            if (RESOLUTION_ORDER.includes(options.resolutionLimit) && RESOLUTION_ORDER.indexOf(options.resolutionLimit) < RESOLUTION_ORDER.indexOf(resolution)) {
+                resolution = options.resolutionLimit
+            }
+
+            sendLog('info', 'download-start', {
                 bvid,
                 pageIndex,
-                error: logger.getErrorMessage(e)
+                resolution,
+                groupCount: filteredGroups.length
             }, taskScope)
-            finishMetric(false, logger.getErrorMessage(e))
-            return
+
+            const meta = videoInfo?.data ? {
+                title: videoInfo.data.title,
+                owner: videoInfo.data.owner?.name ?? 'Unknown',
+                duration: videoInfo.data.duration ?? 0,
+                total_pages: videoInfo.data.pages?.length ?? 1,
+            } : null
+
+            let result
+            try {
+                result = await biliApi.downloadVideo(bvid, pageIndex, resolution, filteredGroups[0], meta, {
+                    taskId: taskContext.taskId,
+                    signal: taskContext.abortSignal,
+                    timeoutMs: DOWNLOAD_TIMEOUT_MS
+                })
+            } catch (e) {
+                sendLog('error', 'download-fail', {
+                    bvid,
+                    pageIndex,
+                    error: logger.getErrorMessage(e)
+                }, taskScope)
+                finishMetric(false, logger.getErrorMessage(e))
+                await recordStatus(filteredGroups, 'failed', 'download_failed')
+                return
+            }
+
+            if (result.status !== 'success') {
+                if (result.terminalConfirmed === false) this.rememberUnconfirmedTask(taskContext)
+                sendLog('warn', 'download-fail', {
+                    bvid,
+                    pageIndex,
+                    error: result.message,
+                    errorType: result.errorType,
+                    failureKind: result.failureKind,
+                    httpStatus: result.httpStatus,
+                    biliCode: result.biliCode,
+                    retryable: result.retryable,
+                    reason: result.reason
+                }, taskScope)
+                finishMetric(false, result.message)
+                await recordStatus(filteredGroups, 'failed', 'download_failed')
+                return
+            }
+
+            // 向所有目标群发送同一文件
+            let sentCount = 0
+            const sentGroups = []
+            const uploadRejectedGroups = []
+            for (const gid of filteredGroups) {
+                try {
+                    const sent = await this._sendForwardMessage(taskContext.transport, gid, result, taskScope, taskContext.paths, error => {
+                        if (/Highway.*102902/i.test(logger.getErrorMessage(error))) uploadRejectedGroups.push(String(gid))
+                    })
+                    if (sent) {
+                        sentCount++
+                        sentGroups.push(String(gid))
+                    }
+                } catch (e) {
+                    sendLog('error', 'video-send-failed', {
+                        groupId: gid,
+                        title: result.title,
+                        targetType: 'group',
+                        error: logger.getErrorMessage(e)
+                    }, taskScope)
+                }
+            }
+            sendLog('info', 'download-ok', {
+                bvid,
+                pageIndex,
+                sentCount,
+                groupCount: filteredGroups.length
+            }, taskScope)
+            finishMetric(sentCount > 0, `${sentCount}/${filteredGroups.length}`)
+
+            await recordStatus(sentGroups, 'delivered')
+            await recordStatus(filteredGroups.filter(gid => !sentGroups.includes(String(gid))), 'failed', 'send_failed')
+
+            // 至少一个群确认发送成功后再清理文件，延迟按成功群数量系数放大
+            if (sentCount > 0) {
+                this._scheduleCleanup(result.file_path, sentCount, taskContext.generation)
+            } else {
+                sendLog('warn', 'cleanup-deferred', {
+                    bvid,
+                    pageIndex,
+                    reason: 'all_video_sends_failed',
+                    filePath: result.file_path
+                }, taskScope)
+            }
+            return { ok: sentCount > 0, sentGroups, attemptedGroups: filteredGroups.map(String), uploadRejectedGroups, resolution }
         } finally {
             this._activeDownloads--
             _inProgressDownloads.delete(downloadKey)
         }
-
-        if (result.status !== 'success') {
-            if (result.terminalConfirmed === false) this.rememberUnconfirmedTask(taskContext)
-            sendLog('warn', 'download-fail', {
-                bvid,
-                pageIndex,
-                error: result.message,
-                errorType: result.errorType,
-                failureKind: result.failureKind,
-                httpStatus: result.httpStatus,
-                biliCode: result.biliCode,
-                retryable: result.retryable,
-                reason: result.reason
-            }, taskScope)
-            finishMetric(false, result.message)
-            return
-        }
-
-        // 向所有目标群发送同一文件
-        let sentCount = 0
-        const sentGroups = []
-        for (const gid of filteredGroups) {
-            try {
-                const sent = await this._sendForwardMessage(taskContext.transport, gid, result, taskScope, taskContext.paths)
-                if (sent) {
-                    sentCount++
-                    sentGroups.push(String(gid))
-                }
-            } catch (e) {
-                sendLog('error', 'video-send-failed', {
-                    groupId: gid,
-                    title: result.title,
-                    targetType: 'group',
-                    error: logger.getErrorMessage(e)
-                }, taskScope)
-            }
-        }
-        sendLog('info', 'download-ok', {
-            bvid,
-            pageIndex,
-            sentCount,
-            groupCount: filteredGroups.length
-        }, taskScope)
-        finishMetric(sentCount > 0, `${sentCount}/${filteredGroups.length}`)
-
-        if (options.recordDelivery && sentGroups.length > 0) {
-            await subscriptionDeliveryStore.recordDeliveredBatch(sentGroups.map(groupId => ({
-                groupId,
-                type: options.contentType || 'video',
-                contentId: String(options.contentId || bvid),
-                deliveryPart: options.deliveryPart || 'auto-download',
-                meta: { source: 'videoDownloadService' }
-            })))
-        }
-
-        // 至少一个群确认发送成功后再清理文件，延迟按成功群数量系数放大
-        if (sentCount > 0) {
-            this._scheduleCleanup(result.file_path, sentCount, taskContext.generation)
-        } else {
-            sendLog('warn', 'cleanup-deferred', {
-                bvid,
-                pageIndex,
-                reason: 'all_video_sends_failed',
-                filePath: result.file_path
-            }, taskScope)
-        }
-        return { ok: sentCount > 0, sentGroups, attemptedGroups: filteredGroups.map(String) }
     }
 
     /**
