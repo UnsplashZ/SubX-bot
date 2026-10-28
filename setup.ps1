@@ -488,7 +488,8 @@ function Invoke-LLBotApiGet([string]$Path) {
 }
 
 function Invoke-LLBotApiPost([string]$Path, [string]$Body) {
-    return (& curl.exe -fsS -m 10 -H "X-Webui-Token: $script:LLBotWebuiAuth" -H 'content-type: application/json' -d $Body "$(Get-LLBotWebuiBase)$Path" 2>$null)
+    # Keep JSON quotes out of Windows PowerShell's native argument conversion.
+    return ($Body | & curl.exe -fsS -m 10 -H "X-Webui-Token: $script:LLBotWebuiAuth" -H 'content-type: application/json' --data-binary '@-' "$(Get-LLBotWebuiBase)$Path" 2>$null)
 }
 
 function Read-LLBotAuthToken([string]$InstallDir) {
@@ -731,44 +732,38 @@ function Generate-ConfigYaml([string]$InstallDir, [string]$BotImage, [string]$Ws
 
     $provider = 'napcat'
     if ($script:QQImplementation -eq 'official') { $provider = 'official' }
-    $nodeScript = @'
+    $configInput = @{
+        provider = $provider
+        officialAppId = $script:OfficialAppId
+        officialClientSecret = $script:OfficialClientSecret
+        rootAdminQQ = $AdminQQ
+        wsUrl = $WsUrl
+        wsToken = $WsToken
+        dashboardPassword = $DashboardPassword
+        env = @{
+            DASHBOARD_PORT = $DashboardPort
+            DASHBOARD_ALLOWED_ORIGINS = $AllowedOrigins
+        }
+    }
+    $inputJson = ConvertTo-Json -InputObject $configInput -Depth 4 -Compress
+    $inputBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($inputJson))
+    # Send ASCII source and encoded UTF-8 input over stdin, not native arguments.
+    $nodeScript = "const input = JSON.parse(Buffer.from('$inputBase64', 'base64').toString('utf8'))`n" + @'
 const fs = require("fs")
 const { run } = require("/app/src/cli/config")
-const input = {
-    provider: process.env.SETUP_PROVIDER,
-    officialAppId: process.env.SETUP_OFFICIAL_APP_ID,
-    officialClientSecret: process.env.SETUP_OFFICIAL_CLIENT_SECRET,
-    rootAdminQQ: process.env.SETUP_ADMIN_QQ,
-    wsUrl: process.env.SETUP_WS_URL,
-    wsToken: process.env.SETUP_WS_TOKEN,
-    dashboardPassword: process.env.SETUP_DASHBOARD_PASSWORD,
-    env: {
-        DASHBOARD_PORT: process.env.SETUP_DASHBOARD_PORT,
-        DASHBOARD_ALLOWED_ORIGINS: process.env.SETUP_ALLOWED_ORIGINS
-    }
-}
 fs.writeFileSync("/tmp/setup-config-input.json", `${JSON.stringify(input)}\n`, { mode: 0o600 })
 Promise.resolve(run([
     "init", "--output", "/install/config/config.yaml",
-    "--provider", process.env.SETUP_PROVIDER, "--input", "/tmp/setup-config-input.json", "--force"
+    "--provider", input.provider, "--input", "/tmp/setup-config-input.json", "--force"
 ])).catch((error) => {
     console.error(error && (error.code || error.message) || error)
     process.exit(1)
 })
 '@
-    & docker run --rm `
-        -e "SETUP_PROVIDER=$provider" `
-        -e "SETUP_OFFICIAL_APP_ID=$script:OfficialAppId" `
-        -e "SETUP_OFFICIAL_CLIENT_SECRET=$script:OfficialClientSecret" `
-        -e "SETUP_WS_URL=$WsUrl" `
-        -e "SETUP_WS_TOKEN=$WsToken" `
-        -e "SETUP_ADMIN_QQ=$AdminQQ" `
-        -e "SETUP_DASHBOARD_PORT=$DashboardPort" `
-        -e "SETUP_DASHBOARD_PASSWORD=$DashboardPassword" `
-        -e "SETUP_ALLOWED_ORIGINS=$AllowedOrigins" `
+    $nodeScript | & docker run --rm -i `
         -v "${InstallDir}:/install" `
         --entrypoint node `
-        $BotImage -e $nodeScript
+        $BotImage -
     if ($LASTEXITCODE -ne 0) { Die '生成 config/config.yaml 失败。' }
 }
 
