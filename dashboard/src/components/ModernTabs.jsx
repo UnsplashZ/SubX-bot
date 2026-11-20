@@ -1,16 +1,27 @@
-import React, { useId, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { clsx } from 'clsx';
 
 const ModernTabs = ({ tabs, selectedIndex, onChange, children }) => {
   const safeIndex = Math.max(0, Math.min(selectedIndex, tabs.length - 1));
-  const [direction, setDirection] = useState('forward');
   const tabRefs = useRef([]);
+  const tabListRef = useRef(null);
   const baseId = useId().replace(/:/g, '');
-  const activeLeft = useMemo(() => `${(safeIndex / tabs.length) * 100}%`, [safeIndex, tabs.length]);
-  const activeWidth = useMemo(() => `${100 / tabs.length}%`, [tabs.length]);
+
+  useEffect(() => {
+    const list = tabListRef.current;
+    const tab = tabRefs.current[safeIndex];
+    if (!list || !tab) return;
+
+    const left = tab.offsetLeft;
+    const right = left + tab.offsetWidth;
+    if (left < list.scrollLeft) {
+      list.scrollTo({ left: Math.max(0, left - 12), behavior: 'smooth' });
+    } else if (right > list.scrollLeft + list.clientWidth) {
+      list.scrollTo({ left: right - list.clientWidth + 12, behavior: 'smooth' });
+    }
+  }, [safeIndex]);
 
   const handleSelect = (index, focus = false) => {
-    setDirection(index >= safeIndex ? 'forward' : 'backward');
     onChange(index);
     if (focus) {
       requestAnimationFrame(() => tabRefs.current[index]?.focus());
@@ -30,31 +41,15 @@ const ModernTabs = ({ tabs, selectedIndex, onChange, children }) => {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-[var(--border-subtle)] px-3 py-3 lg:hidden">
-        <label htmlFor={`${baseId}-mobile-tabs`} className="sr-only">
-          群组设置分类
-        </label>
-        <select
-          id={`${baseId}-mobile-tabs`}
-          className="field-control min-h-11 w-full px-3 py-2 text-sm"
-          value={safeIndex}
-          onChange={(event) => handleSelect(Number(event.target.value))}
-        >
-          {tabs.map((tab, index) => (
-            <option key={tab.name} value={index}>
-              {tab.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="relative hidden overflow-x-auto border-b border-[var(--border-subtle)] px-2 lg:block">
+      <div
+        ref={tabListRef}
+        className="overflow-x-auto border-b border-[var(--border-subtle)] px-4 [-ms-overflow-style:none] [scrollbar-width:none] sm:px-5 [&::-webkit-scrollbar]:hidden"
+      >
         <div
           role="tablist"
           aria-label="群组设置分类"
           aria-orientation="horizontal"
-          className="relative grid min-w-max"
-          style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(7rem, 1fr))` }}
+          className="flex gap-4 sm:gap-5"
         >
           {tabs.map((tab, index) => (
             <button
@@ -71,33 +66,24 @@ const ModernTabs = ({ tabs, selectedIndex, onChange, children }) => {
               onClick={() => handleSelect(index)}
               onKeyDown={(event) => handleKeyDown(event, index)}
               className={clsx(
-                'relative z-10 flex shrink-0 items-center justify-center gap-2 px-3 py-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-inset sm:px-4',
-                index === safeIndex ? 'text-[var(--accent-muted)]' : 'text-[var(--muted)] hover:text-[var(--fg)]'
+                '-mb-px min-h-11 shrink-0 border-b-2 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--fg)]',
+                index === safeIndex
+                  ? 'border-[var(--fg)] font-semibold text-[var(--fg)]'
+                  : 'border-transparent font-medium text-[var(--muted)] hover:text-[var(--fg)]'
               )}
             >
-              {tab.icon && <tab.icon size={16} />}
-              <span>{tab.name}</span>
+              {tab.name}
             </button>
           ))}
-          <div
-            aria-hidden="true"
-            className="absolute bottom-0 h-0.5 rounded-full bg-[var(--accent-muted)] transition-[left,width] duration-200 ease-out motion-reduce:transition-none"
-            style={{ left: activeLeft, width: activeWidth }}
-          />
         </div>
       </div>
 
       <div
-        key={safeIndex}
         role="tabpanel"
         id={`${baseId}-panel`}
         aria-labelledby={`${baseId}-tab-${safeIndex}`}
         tabIndex={0}
-        className={`min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)] motion-reduce:animate-none ${
-          direction === 'forward'
-            ? 'animate-[tab-panel-forward_180ms_ease-out]'
-            : 'animate-[tab-panel-backward_180ms_ease-out]'
-        }`}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-1 focus-visible:outline-none sm:px-5"
       >
         {React.Children.toArray(children)[safeIndex]}
       </div>

@@ -220,13 +220,13 @@ function Groups() {
   ]);
 
   return (
-    <div className="admin-page space-y-4 md:space-y-6">
+    <div className="admin-page space-y-6">
       <header>
         <h1 className="text-3xl font-semibold text-[var(--fg)]">群组管理</h1>
         <p className="mt-1.5 text-sm text-[var(--muted)]">管理群组配置、订阅、权限与同步策略。</p>
       </header>
 
-      <div className="flex flex-col gap-3 sm:gap-4 md:gap-6 lg:h-[calc(100vh-8rem)] lg:flex-row">
+      <div className="grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start lg:gap-8">
         <GroupListPanel
           groups={groups}
           loading={loading}
@@ -236,95 +236,84 @@ function Groups() {
           onDeleteConfig={handleDeleteConfig}
         />
 
-        <div ref={editorRef} className="flex w-full scroll-mt-20 flex-col lg:w-2/3">
+        <div ref={editorRef} className="min-w-0 scroll-mt-40 lg:scroll-mt-24">
           {selectedGroupId ? (
-            <GlassCard className="flex flex-1 flex-col overflow-hidden p-0">
-              <div className="border-b border-[var(--border-subtle)] px-4 py-4 sm:px-5">
-                <div className="min-w-0">
-                  <h2 className="truncate text-base font-semibold text-[var(--fg)]">
-                    {selectedGroup?.name || '群组设置'}
-                  </h2>
-                  <div className="mt-1 text-xs text-[var(--muted)]">ID: {selectedGroupId}</div>
+            <section className="min-w-0" aria-label={selectedGroup?.name ? `${selectedGroup.name} 设置` : '群组设置'}>
+              <GlassCard className="overflow-hidden p-0">
+                <ModernTabs
+                  tabs={GROUP_TAB_CATEGORIES}
+                  selectedIndex={selectedTabIndex}
+                  onChange={setSelectedTabIndex}
+                >
+                  <GeneralTab formData={formData} setFormData={setFormData} />
+                  <SubscriptionsTab
+                    subsLoading={subsLoading}
+                    subscriptions={subscriptions}
+                    subTypes={SUB_TYPES}
+                    onOpenAddModal={() => setIsSubModalOpen(true)}
+                    onDeleteSubscription={handleDeleteSubscription}
+                  />
+                  <PermissionsTab
+                    globalConfig={globalConfig}
+                    adminInput={adminInput}
+                    setAdminInput={setAdminInput}
+                    onAddAdmin={handleAddAdmin}
+                    onRemoveAdmin={handleRemoveAdmin}
+                    blacklistInput={blacklistInput}
+                    setBlacklistInput={setBlacklistInput}
+                    onAddBlacklist={handleAddBlacklist}
+                    onRemoveBlacklist={handleRemoveBlacklist}
+                    formData={formData}
+                    actionLoading={actionLoading}
+                  />
+                  <SyncTab
+                    formData={formData}
+                    setFormData={setFormData}
+                    atAllRules={atAllRules}
+                    atAllCategoryItems={AT_ALL_CATEGORY_ITEMS}
+                    toggleAtAllSource={toggleAtAllSource}
+                    toggleAtAllCategory={toggleAtAllCategory}
+                    setAllAtAllIdsEnabled={setAllAtAllIdsEnabled}
+                    atAllTargetsLoading={atAllTargetsLoading}
+                    atAllTargets={atAllTargets}
+                    isAtAllUserEnabled={isAtAllUserEnabled}
+                    toggleAtAllUser={toggleAtAllUser}
+                    isCookieUserInSelectedSyncGroups={isCookieUserInSelectedSyncGroups}
+                    globalBiliStatus={globalBiliStatus}
+                    biliGroupsLoading={biliGroupsLoading}
+                    biliGroups={biliGroups}
+                    toggleSyncGroup={toggleSyncGroup}
+                  />
+                  <VideoDownloadTab
+                    videoDownloadConfig={videoDownloadConfig}
+                    globalVideoDownloadConfig={globalVideoDownloadConfig}
+                    setVideoDownloadConfig={setVideoDownloadConfig}
+                    actionLoading={actionLoading}
+                    onResetVideoDownloadConfig={resetVideoDownloadConfig}
+                  />
+                  <ExternalParserTab formData={formData} setFormData={setFormData} globalConfig={globalConfig} />
+                </ModernTabs>
+                <div className="flex justify-end border-t border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-3 sm:px-5">
+                  <Button
+                    onClick={handleSaveAll}
+                    disabled={savePending || !hasPendingChanges}
+                    variant="primary"
+                    icon={Save}
+                    className="w-full sm:w-auto"
+                  >
+                    {savePending ? '保存中...' : hasPendingChanges ? '保存更改' : '已保存'}
+                  </Button>
                 </div>
-              </div>
-              <ModernTabs
-                tabs={GROUP_TAB_CATEGORIES}
-                selectedIndex={selectedTabIndex}
-                onChange={setSelectedTabIndex}
-              >
-                <GeneralTab formData={formData} setFormData={setFormData} />
-                <SubscriptionsTab
-                  subsLoading={subsLoading}
-                  subscriptions={subscriptions}
-                  subTypes={SUB_TYPES}
-                  onOpenAddModal={() => setIsSubModalOpen(true)}
-                  onDeleteSubscription={handleDeleteSubscription}
-                />
-                <PermissionsTab
-                  globalConfig={globalConfig}
-                  adminInput={adminInput}
-                  setAdminInput={setAdminInput}
-                  onAddAdmin={handleAddAdmin}
-                  onRemoveAdmin={handleRemoveAdmin}
-                  blacklistInput={blacklistInput}
-                  setBlacklistInput={setBlacklistInput}
-                  onAddBlacklist={handleAddBlacklist}
-                  onRemoveBlacklist={handleRemoveBlacklist}
-                  formData={formData}
-                  actionLoading={actionLoading}
-                />
-                <SyncTab
-                  formData={formData}
-                  setFormData={setFormData}
-                  atAllRules={atAllRules}
-                  atAllCategoryItems={AT_ALL_CATEGORY_ITEMS}
-                  toggleAtAllSource={toggleAtAllSource}
-                  toggleAtAllCategory={toggleAtAllCategory}
-                  setAllAtAllIdsEnabled={setAllAtAllIdsEnabled}
-                  atAllTargetsLoading={atAllTargetsLoading}
-                  atAllTargets={atAllTargets}
-                  isAtAllUserEnabled={isAtAllUserEnabled}
-                  toggleAtAllUser={toggleAtAllUser}
-                  isCookieUserInSelectedSyncGroups={isCookieUserInSelectedSyncGroups}
-                  globalBiliStatus={globalBiliStatus}
-                  biliGroupsLoading={biliGroupsLoading}
-                  biliGroups={biliGroups}
-                  toggleSyncGroup={toggleSyncGroup}
-                />
-                <VideoDownloadTab
-                  videoDownloadConfig={videoDownloadConfig}
-                  globalVideoDownloadConfig={globalVideoDownloadConfig}
-                  setVideoDownloadConfig={setVideoDownloadConfig}
-                  actionLoading={actionLoading}
-                  onResetVideoDownloadConfig={resetVideoDownloadConfig}
-                />
-                <ExternalParserTab formData={formData} setFormData={setFormData} globalConfig={globalConfig} />
-              </ModernTabs>
-              <div className="flex flex-col gap-3 border-t border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-                <p
-                  role="status"
-                  aria-live="polite"
-                  className={`text-xs ${hasPendingChanges ? 'font-medium text-[var(--warn)]' : 'text-[var(--muted)]'}`}
-                >
-                  {savePending ? '正在保存配置…' : hasPendingChanges ? '有未保存的修改' : '所有更改已保存'}
-                </p>
-                <Button
-                  onClick={handleSaveAll}
-                  disabled={savePending || !hasPendingChanges}
-                  variant="primary"
-                  icon={Save}
-                  className="w-full sm:w-auto"
-                >
-                  {savePending ? '保存中...' : hasPendingChanges ? '保存更改' : '已保存'}
-                </Button>
-              </div>
-            </GlassCard>
+              </GlassCard>
+            </section>
           ) : (
-            <GlassCard className="flex-1 flex flex-col items-center justify-center text-center text-[var(--muted)]">
-              <MessageSquare size={48} className="mb-4 opacity-50" />
-              <h3 className="mb-2 text-xl font-medium text-[var(--fg)]">选择一个群组</h3>
-              <p className="text-[var(--muted)]">从列表中选择一个群组以查看和编辑其配置。</p>
-            </GlassCard>
+            <section className="min-w-0" aria-label="群组配置">
+              <GlassCard className="flex min-h-[360px] flex-col items-center justify-center text-center text-[var(--muted)]">
+                <MessageSquare size={48} className="mb-4 opacity-50" aria-hidden="true" />
+                <h3 className="mb-2 text-xl font-medium text-[var(--fg)]">选择一个群组</h3>
+                <p className="text-[var(--muted)]">从列表中选择一个群组以查看和编辑其配置。</p>
+              </GlassCard>
+            </section>
           )}
         </div>
       </div>

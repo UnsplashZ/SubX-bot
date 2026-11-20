@@ -89,7 +89,7 @@ export const Button = React.forwardRef(function Button(
   );
 });
 
-export const ToggleSwitch = ({ checked, onChange, label, disabled = false, className }) => (
+export const ToggleSwitch = ({ checked, onChange, label, disabled = false, className, tone = 'accent' }) => (
   <button
     type="button"
     role="switch"
@@ -99,9 +99,11 @@ export const ToggleSwitch = ({ checked, onChange, label, disabled = false, class
     onClick={() => onChange(!checked)}
     className={twMerge(
       clsx(
-        'inline-flex h-6 !min-h-6 w-11 min-w-11 flex-none shrink-0 items-center rounded-full border p-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        'inline-flex h-6 !min-h-6 w-11 min-w-11 flex-none shrink-0 items-center rounded-full border p-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-45',
         checked
-          ? 'border-[var(--accent)] bg-[var(--accent)]'
+          ? tone === 'neutral'
+            ? 'border-[var(--fg)] bg-[var(--fg)]'
+            : 'border-[var(--accent)] bg-[var(--accent)]'
           : 'border-[var(--border-muted)] bg-[var(--surface-muted)]',
         className
       )
@@ -111,7 +113,9 @@ export const ToggleSwitch = ({ checked, onChange, label, disabled = false, class
       className={clsx(
         'h-4 w-4 shrink-0 rounded-full border shadow-sm transition-transform',
         checked
-          ? 'translate-x-5 border-[var(--accent-contrast)] bg-[var(--accent-contrast)]'
+          ? tone === 'neutral'
+            ? 'translate-x-5 border-[var(--surface)] bg-[var(--surface)]'
+            : 'translate-x-5 border-[var(--accent-contrast)] bg-[var(--accent-contrast)]'
           : 'translate-x-0 border-[var(--border)] bg-[var(--surface)]'
       )}
     />

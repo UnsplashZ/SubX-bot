@@ -52,12 +52,12 @@ const VerifyBadge = ({ verifyInfo }) => {
   return (
     <span
       title={title}
-      className="absolute -right-0.5 -bottom-0.5 w-4 h-4 drop-shadow-[0_2px_4px_rgba(0,0,0,0.35)]"
+      className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]"
     >
       <img
         src={iconSrc}
         alt="用户认证图标"
-        className="block w-full h-full"
+        className="block h-full w-full"
       />
     </span>
   );
@@ -71,12 +71,14 @@ const SubscriptionsTab = ({
   onDeleteSubscription
 }) => {
   return (
-    <div className="focus:outline-none h-full flex flex-col">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-medium text-[var(--fg)]">订阅列表</h3>
+    <div className="flex h-full min-h-0 flex-col focus:outline-none">
+      <div className="flex items-center justify-between gap-4 py-3">
+        <span className="text-xs text-[var(--muted)]" aria-live="polite">
+          {subscriptions.length} 个订阅
+        </span>
         <Button
           onClick={onOpenAddModal}
-          variant="primary"
+          variant="secondary"
           size="sm"
           icon={Plus}
         >
@@ -84,32 +86,32 @@ const SubscriptionsTab = ({
         </Button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
+      <div className="min-h-0 flex-1 overflow-auto">
         {subsLoading ? (
-          <div className="p-4 text-center text-[var(--muted)]">加载订阅中...</div>
+          <div className="py-10 text-center text-sm text-[var(--muted)]">加载订阅中…</div>
         ) : subscriptions.length === 0 ? (
-          <div className="p-8 text-center text-[var(--muted)] flex flex-col items-center">
-            <Bell size={32} className="mb-2 opacity-30" />
+          <div className="flex flex-col items-center justify-center py-16 text-sm text-[var(--muted)]">
+            <Bell size={24} className="mb-2 opacity-40" />
             暂无订阅
           </div>
         ) : (
           <table className="w-full text-left text-sm">
-            <thead className="bg-[var(--surface-quiet)] text-[var(--muted)] font-medium">
-              <tr>
-                <th className="p-3">用户</th>
-                <th className="p-3">值 / ID</th>
-                <th className="p-3 text-right">操作</th>
+            <thead className="sticky top-0 z-10 bg-[var(--surface)]">
+              <tr className="border-b border-[var(--border)] text-[11px] font-medium text-[var(--muted)]">
+                <th scope="col" className="w-16 px-2 py-2 font-medium first:pl-0">类型</th>
+                <th scope="col" className="px-2 py-2 font-medium">订阅对象</th>
+                <th scope="col" className="w-10 px-2 py-2 text-right font-medium last:pr-0">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-subtle)]">
               {subscriptions.map((sub, idx) => (
-                <tr key={idx} className="transition-colors hover:bg-[var(--surface-hover)]">
-                  <td className="p-3 text-[var(--accent-muted)]">
+                <tr key={idx} className="group transition-colors hover:bg-[var(--surface-quiet)]">
+                  <td className="px-2 py-2.5 align-middle text-xs text-[var(--muted)] first:pl-0">
                     {subTypes.find((type) => type.value === sub.type)?.label || sub.type}
                   </td>
-                  <td className="p-3 text-[var(--fg)]">
+                  <td className="px-2 py-2.5 align-middle text-[var(--fg)]">
                     {(sub.name || sub.title) ? (
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex min-w-0 items-center gap-3">
                         {sub.type === 'user' && (
                           <div className="relative shrink-0">
                             <img
@@ -117,27 +119,29 @@ const SubscriptionsTab = ({
                               alt={sub.name || '用户头像'}
                               onError={handleAvatarError}
                               referrerPolicy="no-referrer"
-                              className="w-9 h-9 rounded-full object-cover border border-[var(--border)] bg-[var(--surface-muted)]"
+                              className="h-8 w-8 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-muted)] object-cover"
                             />
                             <VerifyBadge verifyInfo={getVerifyInfo(sub)} />
                           </div>
                         )}
                         <div className="min-w-0">
-                          <div className="font-medium truncate">{sub.name || sub.title}</div>
-                          <div className="text-xs text-[var(--muted)] font-mono">{sub.value}</div>
+                          <div className="truncate text-sm font-medium">{sub.name || sub.title}</div>
+                          <div className="truncate font-mono text-[11px] text-[var(--muted)]">{sub.value}</div>
                         </div>
                       </div>
                     ) : (
-                      <div className="font-mono">{sub.value}</div>
+                      <div className="font-mono text-sm">{sub.value}</div>
                     )}
                   </td>
-                  <td className="p-3 text-right">
+                  <td className="px-2 py-2.5 text-right align-middle last:pr-0">
                     <button
+                      type="button"
                       onClick={() => onDeleteSubscription(sub)}
-                      className="rounded p-1.5 text-[color-mix(in_oklch,var(--danger)_84%,var(--fg))] transition-colors hover:bg-[var(--danger-soft)]"
+                      className="rounded p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fg)]"
                       title="删除"
+                      aria-label="删除订阅"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={15} />
                     </button>
                   </td>
                 </tr>

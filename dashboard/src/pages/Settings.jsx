@@ -29,6 +29,8 @@ const AUTO_SAVE_INDICATORS = {
   error: { icon: X, className: 'text-red-500', text: '自动保存失败，将在下次修改时重试' }
 }
 
+const createScrollLock = (id, top) => ({ id, top, expiresAt: Date.now() + 1500 })
+
 const SETTINGS_SECTIONS = [
   { id: 'settings-general', label: '常规' },
   { id: 'settings-runtime', label: '运行状态' },
@@ -61,6 +63,8 @@ const Settings = () => {
   const [isRestartModalOpen, setIsRestartModalOpen] = useState(false)
   const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS[0].id)
   const previewGradientGenerationRef = useRef(null)
+  const sectionNavRef = useRef(null)
+  const programmaticScrollRef = useRef(null)
 
   const settingsData = useSettingsData(show)
   const biliActions = useBiliLogin({
@@ -70,26 +74,118 @@ const Settings = () => {
   const previewGradientSettings = usePreviewGradientSettings(show, previewGradientGenerationRef)
 
   useEffect(() => {
+    if (settingsData.loading) return undefined
     const sections = SETTINGS_SECTIONS
       .map((item) => document.getElementById(item.id))
       .filter(Boolean)
     if (sections.length === 0) return undefined
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
-        if (visible[0]?.target?.id) setActiveSection(visible[0].target.id)
-      },
-      { rootMargin: '-16% 0px -70% 0px', threshold: [0, 1] }
-    )
-    sections.forEach((section) => observer.observe(section))
-    return () => observer.disconnect()
+
+    let frameId = 0
+    const requestFrame = window.requestAnimationFrame
+      ? window.requestAnimationFrame.bind(window)
+      : (callback) => window.setTimeout(callback, 16)
+    const cancelFrame = window.cancelAnimationFrame
+      ? window.cancelAnimationFrame.bind(window)
+      : window.clearTimeout.bind(window)
+
+    const updateActiveSection = () => {
+      frameId = 0
+      const pendingScroll = programmaticScrollRef.current
+      if (pendingScroll) {
+        if (Date.now() < pendingScroll.expiresAt && Math.abs(window.scrollY - pendingScroll.top) > 2) {
+          return
+        }
+        programmaticScrollRef.current = null
+      }
+
+      const scrollTop = window.scrollY
+      const viewportHeight = window.innerHeight
+      const documentHeight = Math.max(
+        document.documentElement.scrollHeight,
+        document.body?.scrollHeight || 0
+      )
+      if (!viewportHeight || !documentHeight) return
+
+      // 页面触底时强制高亮最后一个分区，避免短分区永远进不了观察区间。
+      if (scrollTop + viewportHeight >= documentHeight - 2) {
+        setActiveSection(sections[sections.length - 1].id)
+        return
+      }
+
+      const activationLine = scrollTop + Math.min(viewportHeight * 0.28, 220)
+      let nextSectionId = sections[0].id
+      for (const section of sections) {
+        const sectionTop = section.getBoundingClientRect().top + scrollTop
+        if (sectionTop > activationLine + 1) break
+        nextSectionId = section.id
+      }
+      setActiveSection(nextSectionId)
+    }
+
+    const requestUpdate = () => {
+      if (frameId) return
+      frameId = requestFrame(updateActiveSection)
+    }
+
+    window.addEventListener('scroll', requestUpdate, { passive: true })
+    window.addEventListener('resize', requestUpdate)
+    requestUpdate()
+
+    return () => {
+      if (frameId) cancelFrame(frameId)
+      window.removeEventListener('scroll', requestUpdate)
+      window.removeEventListener('resize', requestUpdate)
+    }
   }, [settingsData.loading])
 
+  useEffect(() => {
+    const nav = sectionNavRef.current
+    if (!nav) return
+    const activeButton = nav.querySelector('button[aria-current="true"]')
+    if (!activeButton) return
+    const needsHorizontalScroll = nav.scrollWidth > nav.clientWidth + 1
+    const needsVerticalScroll = nav.scrollHeight > nav.clientHeight + 1
+    if (!needsHorizontalScroll && !needsVerticalScroll) return
+    const navRect = nav.getBoundingClientRect()
+    const buttonRect = activeButton.getBoundingClientRect()
+    const maxLeft = nav.scrollWidth - nav.clientWidth
+    const maxTop = nav.scrollHeight - nav.clientHeight
+    const nextLeft = needsHorizontalScroll
+      ? Math.max(0, Math.min(
+        nav.scrollLeft + buttonRect.left - navRect.left - (nav.clientWidth - buttonRect.width) / 2,
+        maxLeft
+      ))
+      : nav.scrollLeft
+    const nextTop = needsVerticalScroll
+      ? Math.max(0, Math.min(
+        nav.scrollTop + buttonRect.top - navRect.top - (nav.clientHeight - buttonRect.height) / 2,
+        maxTop
+      ))
+      : nav.scrollTop
+    if (Math.abs(nav.scrollLeft - nextLeft) < 1 && Math.abs(nav.scrollTop - nextTop) < 1) return
+    nav.scrollTo({ left: nextLeft, top: nextTop, behavior: 'smooth' })
+  }, [activeSection])
+
   const scrollToSection = (id) => {
+    const section = document.getElementById(id)
+    if (!section) return
+    const isDesktop = window.matchMedia?.('(min-width: 1024px)').matches
+    let offset = 96
+    if (!isDesktop) {
+      const fixedHeader = Array.from(document.querySelectorAll('header'))
+        .find((header) => window.getComputedStyle(header).position === 'fixed')
+      offset = (fixedHeader?.getBoundingClientRect().height || 0)
+        + (sectionNavRef.current?.getBoundingClientRect().height || 0)
+        + 12
+    }
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+    const targetTop = Math.min(
+      Math.max(0, section.getBoundingClientRect().top + window.scrollY - offset),
+      maxScroll
+    )
+    programmaticScrollRef.current = createScrollLock(id, targetTop)
     setActiveSection(id)
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    window.scrollTo({ top: targetTop, behavior: 'smooth' })
   }
 
   const handleRestart = () => {
@@ -125,8 +221,9 @@ const Settings = () => {
 
       <div className="grid gap-5 lg:grid-cols-[176px_minmax(0,1fr)] lg:items-start lg:gap-8">
         <nav
+          ref={sectionNavRef}
           aria-label="设置分区"
-          className="sticky top-14 z-20 -mx-3 flex gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--bg)] px-3 py-2 lg:top-8 lg:mx-0 lg:block lg:space-y-0.5 lg:overflow-visible lg:border-0 lg:bg-transparent lg:px-0 lg:py-0"
+          className="sticky top-14 z-20 -mx-3 flex gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--bg)] px-3 py-2 md:top-0 lg:top-8 lg:mx-0 lg:block lg:max-h-[calc(100dvh-4rem)] lg:space-y-0.5 lg:overflow-y-auto lg:border-0 lg:bg-transparent lg:px-0 lg:py-0"
         >
           <div className="hidden px-3 pb-2 text-xs font-semibold text-[var(--muted)] lg:block">设置分区</div>
           {SETTINGS_SECTIONS.map((section) => (
