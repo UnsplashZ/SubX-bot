@@ -1,6 +1,15 @@
 import GlassCard from '../../../components/GlassCard'
 import { Button } from '../../../components/ui'
 
+function formatBiliTimestamp(value) {
+    if (!value) return '未知'
+    const timestamp = typeof value === 'number'
+        ? (value < 1e12 ? value * 1000 : value)
+        : Date.parse(value)
+    if (Number.isNaN(timestamp)) return '未知'
+    return new Date(timestamp).toLocaleString('zh-CN', { hour12: false })
+}
+
 const BiliGlobalSection = ({ biliGlobalStatus, biliLoading, onLogin, onLogout }) => {
     return (
         <section>
@@ -28,10 +37,7 @@ const BiliGlobalSection = ({ biliGlobalStatus, biliLoading, onLogin, onLogout })
                                         </span>
                                     </p>
                                     <p className="text-xs text-[var(--muted)] mt-1">
-                                        更新时间：{biliGlobalStatus.timestamp
-                                            ? new Date(biliGlobalStatus.timestamp * 1000).toLocaleString('zh-CN')
-                                            : '未知'
-                                        }
+                                        更新时间：{formatBiliTimestamp(biliGlobalStatus.timestamp)}
                                     </p>
                                 </div>
                             </div>

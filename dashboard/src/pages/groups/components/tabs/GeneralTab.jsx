@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react';
 import { clsx } from 'clsx';
 import SettingRow from '../../../../components/SettingRow';
 import { ToggleSwitch } from '../../../../components/ui';
@@ -9,17 +10,23 @@ const NIGHT_MODE_OPTIONS = [
   { value: 'timed', label: '定时' }
 ];
 
-const SegmentedControl = ({ value, onChange, options }) => (
-  <div className="inline-grid w-full grid-cols-3 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-1 sm:w-auto">
+const SegmentedControl = ({ value, onChange, options, label }) => (
+  <div
+    role="radiogroup"
+    aria-label={label}
+    className="inline-grid w-full grid-cols-3 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-1 sm:w-auto"
+  >
     {options.map((option) => {
       const active = value === option.value;
       return (
         <button
           key={option.value}
           type="button"
+          role="radio"
+          aria-checked={active}
           onClick={() => onChange(option.value)}
           className={clsx(
-            'h-8 min-w-20 rounded-md px-3 text-sm font-medium transition-colors',
+            'h-9 min-w-20 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
             active
               ? 'bg-[var(--surface)] text-[var(--fg)] shadow-sm'
               : 'text-[var(--muted)] hover:text-[var(--fg)]'
@@ -32,22 +39,34 @@ const SegmentedControl = ({ value, onChange, options }) => (
   </div>
 );
 
-const LabelVisibilityRow = ({ label, enabled, onChange }) => (
-  <button
-    type="button"
-    onClick={() => onChange(!enabled)}
-    className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--border)] px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-[var(--surface-muted)]"
+const LabelVisibilityOption = ({ label, enabled, onChange }) => (
+  <label
+    className={clsx(
+      'flex min-h-11 cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors focus-within:ring-2 focus-within:ring-[var(--accent)]',
+      enabled
+        ? 'border-[color-mix(in_oklch,var(--accent)_32%,var(--border))] bg-[var(--accent-soft)] text-[var(--fg)]'
+        : 'border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--muted)] hover:bg-[var(--surface-quiet)]'
+    )}
   >
-    <span className="min-w-0 truncate text-sm font-medium text-[var(--fg)]">{label}</span>
+    <span className="min-w-0 truncate font-medium">{label}</span>
     <span
+      aria-hidden="true"
       className={clsx(
-        'font-mono text-xs font-semibold',
-        enabled ? 'text-[var(--accent)]' : 'text-[var(--muted)]'
+        'flex h-5 w-5 shrink-0 items-center justify-center rounded border',
+        enabled
+          ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]'
+          : 'border-[var(--border-muted)] bg-[var(--surface)]'
       )}
     >
-      {enabled ? '显示' : '隐藏'}
+      {enabled && <Check size={13} strokeWidth={3} />}
     </span>
-  </button>
+    <input
+      type="checkbox"
+      checked={enabled}
+      onChange={(event) => onChange(event.target.checked)}
+      className="sr-only"
+    />
+  </label>
 );
 
 const GeneralTab = ({ formData, setFormData }) => {
@@ -88,6 +107,7 @@ const GeneralTab = ({ formData, setFormData }) => {
             <SegmentedControl
               value={formData.nightMode.mode}
               options={NIGHT_MODE_OPTIONS}
+              label="深色模式"
               onChange={(mode) => setFormData({ ...formData, nightMode: { ...formData.nightMode, mode } })}
             />
           </div>
@@ -128,17 +148,32 @@ const GeneralTab = ({ formData, setFormData }) => {
         </div>
 
         <div className="py-4">
-          <div className="mb-3 flex items-end justify-between gap-3">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <span className="block text-sm font-medium text-[var(--fg)]">预览卡片标签</span>
+              <h3 className="text-sm font-medium text-[var(--fg)]">预览卡片标签</h3>
+              <p className="mt-1 text-xs text-[var(--muted)]">选择在预览卡片中显示的内容标签。</p>
             </div>
-            <span className="font-mono text-xs text-[var(--muted)]">
-              {LABEL_CONFIG_ITEMS.filter((item) => formData.labelConfig?.[item.key]).length}/{LABEL_CONFIG_ITEMS.length}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-xs text-[var(--muted)]">
+                {LABEL_CONFIG_ITEMS.filter((item) => formData.labelConfig?.[item.key]).length}/{LABEL_CONFIG_ITEMS.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const allEnabled = LABEL_CONFIG_ITEMS.every((item) => formData.labelConfig?.[item.key]);
+                  const labelConfig = { ...formData.labelConfig };
+                  for (const item of LABEL_CONFIG_ITEMS) labelConfig[item.key] = !allEnabled;
+                  setFormData({ ...formData, labelConfig });
+                }}
+                className="rounded-md px-2 py-1 text-xs font-semibold text-[var(--accent-muted)] transition-colors hover:bg-[var(--accent-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                {LABEL_CONFIG_ITEMS.every((item) => formData.labelConfig?.[item.key]) ? '全部隐藏' : '全部显示'}
+              </button>
+            </div>
           </div>
-          <div className="grid overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] sm:grid-cols-2">
+          <div role="group" aria-label="预览卡片标签可见性" className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {LABEL_CONFIG_ITEMS.map((item) => (
-              <LabelVisibilityRow
+              <LabelVisibilityOption
                 key={item.key}
                 label={item.label}
                 enabled={!!formData.labelConfig?.[item.key]}

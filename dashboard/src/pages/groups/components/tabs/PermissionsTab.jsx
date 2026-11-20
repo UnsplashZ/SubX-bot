@@ -38,6 +38,7 @@ const PermissionsTab = ({
             <input
               type="text"
               placeholder="输入 QQ 号或 OpenID..."
+              aria-label="添加群管理员 QQ 号或 OpenID"
               value={adminInput}
               onChange={(e) => setAdminInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && onAddAdmin()}
@@ -87,6 +88,7 @@ const PermissionsTab = ({
             <input
               type="text"
               placeholder="输入 QQ 号或 OpenID..."
+              aria-label="添加群黑名单 QQ 号或 OpenID"
               value={blacklistInput}
               onChange={(e) => setBlacklistInput(e.target.value)}
               className="field-control flex-1 px-3 py-2"

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import GlassCard from '../components/GlassCard';
 import ModernTabs from '../components/ModernTabs';
 import { Button } from '../components/ui';
 import { useToast } from '../hooks/useToast';
 import { Save, MessageSquare } from 'lucide-react';
 import GroupListPanel from './groups/components/GroupListPanel';
+import UnsavedChangesDialog from './groups/components/UnsavedChangesDialog';
 import AddSubscriptionModal from './groups/components/AddSubscriptionModal';
 import GeneralTab from './groups/components/tabs/GeneralTab';
 import SubscriptionsTab from './groups/components/tabs/SubscriptionsTab';
@@ -30,6 +31,8 @@ const SUB_TYPES = [
 function Groups() {
   const { show } = useToast();
   const [selectedTabIndex, setSelectedTabIndex] = useState(0);
+  const [pendingGroupId, setPendingGroupId] = useState(null);
+  const editorRef = useRef(null);
 
   const { actionLoading, runLockedAction } = useActionLock();
 
@@ -60,6 +63,8 @@ function Groups() {
     formData,
     setFormData,
     saving,
+    isDirty,
+    discardChanges,
     handleSave,
     globalConfig,
     toggleSyncGroup,
@@ -125,7 +130,8 @@ function Groups() {
     saveVideoDownloadConfig,
     videoDownloadDirty,
     videoDownloadResetPending,
-    resetVideoDownloadConfig
+    resetVideoDownloadConfig,
+    discardVideoDownloadChanges
   } = useGroupVideoDownloadConfig({
     selectedGroupId,
     runLockedAction,
@@ -135,14 +141,57 @@ function Groups() {
   });
 
   const VIDEO_DOWNLOAD_TAB_INDEX = GROUP_TAB_CATEGORIES.findIndex((category) => category.name === '视频下载');
+  const selectedGroup = groups.find((group) => group.id === selectedGroupId);
+  const hasPendingChanges = isDirty || videoDownloadDirty || videoDownloadResetPending;
+  const savePending = saving || actionLoading.videoConfig;
 
   const handleSaveAll = async () => {
-    const configSaved = await handleSave();
-    if (!configSaved) return;
-    if (videoDownloadDirty || videoDownloadResetPending) {
-      await saveVideoDownloadConfig();
+    if (isDirty) {
+      const configSaved = await handleSave();
+      if (!configSaved) return false;
     }
+    if (videoDownloadDirty || videoDownloadResetPending) {
+      const videoSaved = await saveVideoDownloadConfig();
+      if (videoSaved === false) return false;
+    }
+    return true;
   };
+
+  const requestSelectGroup = (groupId) => {
+    if (groupId === selectedGroupId) return;
+    if (isDirty || videoDownloadDirty || videoDownloadResetPending) {
+      setPendingGroupId(groupId);
+      return;
+    }
+    setSelectedGroupId(groupId);
+  };
+
+  const handleDiscardAndSwitch = async () => {
+    if (!pendingGroupId) return;
+    discardChanges();
+    if (videoDownloadDirty || videoDownloadResetPending) {
+      await discardVideoDownloadChanges();
+    }
+    setSelectedGroupId(pendingGroupId);
+    setPendingGroupId(null);
+  };
+
+  const handleSaveAndSwitch = async () => {
+    if (!pendingGroupId) return;
+    const saved = await handleSaveAll();
+    if (!saved) return;
+    setSelectedGroupId(pendingGroupId);
+    setPendingGroupId(null);
+  };
+
+  useEffect(() => {
+    if (!selectedGroupId || !editorRef.current) return;
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      requestAnimationFrame(() => {
+        editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [selectedGroupId]);
 
   useEffect(() => {
     if (!selectedGroupId) return;
@@ -173,40 +222,30 @@ function Groups() {
   return (
     <div className="admin-page space-y-4 md:space-y-6">
       <header>
-        <div className="font-mono text-xs font-semibold uppercase text-[var(--accent)]">Configure</div>
-        <h1 className="mt-1 text-3xl font-semibold text-[var(--fg)]">群组管理</h1>
-        <p className="mt-1.5 text-xs text-[var(--muted)]">管理群组配置、订阅、权限与同步策略。</p>
+        <h1 className="text-3xl font-semibold text-[var(--fg)]">群组管理</h1>
+        <p className="mt-1.5 text-sm text-[var(--muted)]">管理群组配置、订阅、权限与同步策略。</p>
       </header>
 
-      <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 md:gap-6 lg:h-[calc(100vh-9rem)]">
+      <div className="flex flex-col gap-3 sm:gap-4 md:gap-6 lg:h-[calc(100vh-8rem)] lg:flex-row">
         <GroupListPanel
           groups={groups}
           loading={loading}
           selectedGroupId={selectedGroupId}
-          onSelectGroup={setSelectedGroupId}
+          onSelectGroup={requestSelectGroup}
           onToggleGroup={handleToggleGroup}
           onDeleteConfig={handleDeleteConfig}
         />
 
-        <div className="w-full lg:w-2/3 flex flex-col">
+        <div ref={editorRef} className="flex w-full scroll-mt-20 flex-col lg:w-2/3">
           {selectedGroupId ? (
             <GlassCard className="flex flex-1 flex-col overflow-hidden p-0">
-              <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div className="border-b border-[var(--border-subtle)] px-4 py-4 sm:px-5">
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-semibold text-[var(--fg)]">
-                    {groups.find((group) => group.id === selectedGroupId)?.name || '群组设置'}
+                    {selectedGroup?.name || '群组设置'}
                   </h2>
                   <div className="mt-1 text-xs text-[var(--muted)]">ID: {selectedGroupId}</div>
                 </div>
-                <Button
-                  onClick={handleSaveAll}
-                  disabled={saving || actionLoading.videoConfig}
-                  variant="primary"
-                  icon={Save}
-                  className="w-full sm:w-auto"
-                >
-                  {saving || actionLoading.videoConfig ? '保存中...' : '保存更改'}
-                </Button>
               </div>
               <ModernTabs
                 tabs={GROUP_TAB_CATEGORIES}
@@ -261,6 +300,24 @@ function Groups() {
                 />
                 <ExternalParserTab formData={formData} setFormData={setFormData} globalConfig={globalConfig} />
               </ModernTabs>
+              <div className="flex flex-col gap-3 border-t border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={`text-xs ${hasPendingChanges ? 'font-medium text-[var(--warn)]' : 'text-[var(--muted)]'}`}
+                >
+                  {savePending ? '正在保存配置…' : hasPendingChanges ? '有未保存的修改' : '所有更改已保存'}
+                </p>
+                <Button
+                  onClick={handleSaveAll}
+                  disabled={savePending || !hasPendingChanges}
+                  variant="primary"
+                  icon={Save}
+                  className="w-full sm:w-auto"
+                >
+                  {savePending ? '保存中...' : hasPendingChanges ? '保存更改' : '已保存'}
+                </Button>
+              </div>
             </GlassCard>
           ) : (
             <GlassCard className="flex-1 flex flex-col items-center justify-center text-center text-[var(--muted)]">
@@ -271,6 +328,15 @@ function Groups() {
           )}
         </div>
       </div>
+
+      <UnsavedChangesDialog
+        open={Boolean(pendingGroupId)}
+        groupName={selectedGroup?.name}
+        saving={savePending}
+        onCancel={() => setPendingGroupId(null)}
+        onDiscard={handleDiscardAndSwitch}
+        onSaveAndSwitch={handleSaveAndSwitch}
+      />
 
       <AddSubscriptionModal
         isOpen={isSubModalOpen}

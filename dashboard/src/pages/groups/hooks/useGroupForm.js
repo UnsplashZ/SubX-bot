@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../../utils/auth';
 import { normalizeAtAllRules } from '../utils/atAllRules';
 import { createDefaultGroupFormData, mapGroupConfigToFormData } from '../utils/groupForm';
@@ -26,9 +26,11 @@ const useGroupForm = ({
   syncConfigGeneration
 }) => {
   const [formData, setFormData] = useState(createDefaultGroupFormData());
+  const [savedFormData, setSavedFormData] = useState(createDefaultGroupFormData());
   const [saving, setSaving] = useState(false);
   const [globalConfig, setGlobalConfig] = useState(DEFAULT_GLOBAL_CONFIG);
   const [globalConfigLoading, setGlobalConfigLoading] = useState(true);
+  const hydratedGroupKeyRef = useRef(null);
 
   useEffect(() => {
     const fetchGlobalConfig = async () => {
@@ -59,13 +61,35 @@ const useGroupForm = ({
   }, []);
 
   useEffect(() => {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId) {
+      hydratedGroupKeyRef.current = null;
+      return;
+    }
 
     const group = groups.find((item) => item.id === selectedGroupId);
     if (!group) return;
 
-    setFormData(mapGroupConfigToFormData(group.config || {}, globalConfig.showId));
+    const hydrationKey = `${selectedGroupId}:${globalConfig.showId}`;
+    if (hydratedGroupKeyRef.current === hydrationKey) return;
+    hydratedGroupKeyRef.current = hydrationKey;
+    const nextFormData = mapGroupConfigToFormData(group.config || {}, globalConfig.showId);
+    setFormData(nextFormData);
+    setSavedFormData(nextFormData);
   }, [selectedGroupId, groups, globalConfig.showId]);
+
+  const isDirty = useMemo(
+    () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
+    [formData, savedFormData]
+  );
+
+  const discardChanges = useCallback(() => {
+    const group = groups.find((item) => item.id === selectedGroupId);
+    const nextFormData = group
+      ? mapGroupConfigToFormData(group.config || {}, globalConfig.showId)
+      : createDefaultGroupFormData();
+    setFormData(nextFormData);
+    setSavedFormData(nextFormData);
+  }, [groups, selectedGroupId, globalConfig.showId]);
 
   const handleSave = useCallback(async () => {
     if (!selectedGroupId) return false;
@@ -94,6 +118,7 @@ const useGroupForm = ({
       if (Array.isArray(res.data)) {
         setGroups(res.data);
       }
+      setSavedFormData(payload);
 
       show('配置保存成功', 'success');
       return true;
@@ -208,6 +233,8 @@ const useGroupForm = ({
     formData,
     setFormData,
     saving,
+    isDirty,
+    discardChanges,
     handleSave,
     globalConfig,
     globalConfigLoading,

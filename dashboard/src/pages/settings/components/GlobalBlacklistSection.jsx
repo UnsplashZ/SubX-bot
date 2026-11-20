@@ -22,6 +22,7 @@ const GlobalBlacklistSection = ({
                     <div className="flex gap-2">
                         <input
                             type="text"
+                            aria-label="输入要加入黑名单的 QQ 号或 OpenID"
                             value={newBlacklistQQ}
                             disabled={disabled}
                             onChange={(e) => onNewBlacklistQQChange(e.target.value)}
@@ -50,9 +51,10 @@ const GlobalBlacklistSection = ({
                                     <span>{qq}</span>
                                     <button
                                         type="button"
+                                        aria-label={`从黑名单移除 ${qq}`}
                                         disabled={disabled}
                                         onClick={() => onRemoveBlacklist(qq)}
-                                        className="rounded-md text-[var(--muted)] transition-colors hover:text-[var(--fg)]"
+                                        className="grid h-8 w-8 place-items-center rounded-md text-[var(--muted)] transition-colors hover:text-[var(--fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] max-md:min-h-11 max-md:min-w-11"
                                     >
                                         <X size={14} />
                                     </button>

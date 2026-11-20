@@ -10,6 +10,25 @@ const MIGRATION_WARNING_LABELS = {
     LEGACY_NETWORK_FENCE_UNAVAILABLE: '旧版网络 fence 不可用'
 }
 
+const MIGRATION_PHASE_LABELS = {
+    steady: '稳定运行',
+    migrating: '迁移中',
+    preparing: '准备中',
+    committed: '已提交'
+}
+
+const DELIVERY_GUARANTEE_LABELS = {
+    exact: '精确投递',
+    'best-effort': '尽力投递'
+}
+
+const formatTimestamp = (value) => {
+    if (!value) return '尚无记录'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleString('zh-CN', { hour12: false })
+}
+
 function ConfigRuntimeStatusSection({ status, migration, lastApplyResult, reloading, onReload, recovering, recoveryResult, onRecover }) {
     const generation = status?.documentGeneration ?? status?.generation ?? 0
     const effectiveGeneration = status?.effectiveGeneration ?? 0
@@ -26,15 +45,15 @@ function ConfigRuntimeStatusSection({ status, migration, lastApplyResult, reload
                 <Settings2 className="text-[var(--accent)]" />
                 <h2 className="text-xl font-semibold text-[var(--fg)]">配置运行状态</h2>
                 <StatusPill tone={status?.valid ? 'success' : 'danger'}>{status?.valid ? '有效' : '未就绪'}</StatusPill>
-                {recovery && <StatusPill tone="danger">Recovery required</StatusPill>}
-                {migration?.deliveryGuarantee === 'best-effort' && <StatusPill tone="warn">Legacy best-effort</StatusPill>}
+                {recovery && <StatusPill tone="danger">需要恢复</StatusPill>}
+                {migration?.deliveryGuarantee === 'best-effort' && <StatusPill tone="warn">旧版尽力投递</StatusPill>}
             </div>
             <GlassCard>
                 <div className="divide-y divide-[var(--border-subtle)]">
                     <SettingRow
-                        title="Generation"
-                        description="文档 revision 与实际生效 revision 分开计数；保存冲突会返回 409。"
-                        status={<StatusPill tone="accent">Doc {generation} / Effective {effectiveGeneration}</StatusPill>}
+                        title="配置版本"
+                        description="文档版本与实际生效版本分开计数；保存冲突时会自动重新加载。"
+                        status={<StatusPill tone="accent">文档 {generation} · 生效 {effectiveGeneration}</StatusPill>}
                         control={
                             <Button type="button" size="sm" icon={RefreshCw} disabled={reloading || recovering || Boolean(recovery)} onClick={onReload}>
                                 {reloading ? '加载中' : '从磁盘重载'}
@@ -75,18 +94,18 @@ function ConfigRuntimeStatusSection({ status, migration, lastApplyResult, reload
                         />
                     )}
                     <SettingRow
-                        title="最近 Reload"
+                        title="最近重载"
                         description={status?.lastFailedReloadAt
-                            ? `最近失败：${status.lastFailedReloadAt}（继续使用上一有效快照）`
-                            : '无已知 reload 失败。'}
-                        status={<span className="text-xs text-[var(--muted)]">{status?.lastSuccessfulReloadAt || '尚无记录'}</span>}
+                            ? `上次重载失败：${formatTimestamp(status.lastFailedReloadAt)}（继续使用上一有效配置）`
+                            : '最近没有重载失败记录。'}
+                        status={<span className="text-xs text-[var(--muted)]">{formatTimestamp(status?.lastSuccessfulReloadAt)}</span>}
                     />
                     <SettingRow
-                        title="Migration"
+                        title="配置迁移"
                         description={migration
-                            ? `${migration.checkpoint} / ${migration.phase} / ${migration.deliveryGuarantee}`
-                            : '当前没有活动 migration manifest。'}
-                        status={migration && <StatusPill tone={migration.appliesToCommittedRuntime ? 'success' : 'neutral'}>{migration.checkpoint}</StatusPill>}
+                            ? `版本 ${migration.checkpoint} · ${MIGRATION_PHASE_LABELS[migration.phase] || migration.phase} · ${DELIVERY_GUARANTEE_LABELS[migration.deliveryGuarantee] || migration.deliveryGuarantee}`
+                            : '当前没有进行中的配置迁移。'}
+                        status={migration && <StatusPill tone={migration.appliesToCommittedRuntime ? 'success' : 'neutral'}>{migration.appliesToCommittedRuntime ? '已应用' : '待应用'}</StatusPill>}
                         control={warnings.length > 0 && (
                             <div className="max-w-xl text-right text-xs leading-relaxed text-[var(--warn)]">
                                 {warnings.map((code) => <div key={code}>{MIGRATION_WARNING_LABELS[code] || code}</div>)}
@@ -94,9 +113,9 @@ function ConfigRuntimeStatusSection({ status, migration, lastApplyResult, reload
                         )}
                     />
                     <SettingRow
-                        title="Deployment Apply"
+                        title="部署变更"
                         description={deploymentPaths.length > 0
-                            ? '以下宿主机端口、挂载或网络变更需要执行 setup --apply；应用不会伪装成已热重载。'
+                            ? '以下宿主机端口、挂载或网络变更需要在宿主机执行 setup --apply，面板不会热应用这些变更。'
                             : `没有等待执行的部署级变更。${deployment?.appliedGeneration ? ` 已应用基线 #${deployment.appliedGeneration}。` : ''}`}
                         status={<StatusPill tone={deploymentPaths.length > 0 ? 'warn' : 'success'}>{deploymentPaths.length} 项</StatusPill>}
                         control={deploymentPaths.length > 0 && (

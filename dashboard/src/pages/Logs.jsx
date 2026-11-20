@@ -202,19 +202,19 @@ const Logs = () => {
 
   return (
     <div className="admin-page logs-shell flex min-h-0 flex-col space-y-3 overflow-hidden pb-5 md:space-y-4 md:pb-6">
-      <header className="flex shrink-0 justify-between items-start sm:items-center flex-wrap gap-3">
+      <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 sm:items-center">
         <div>
-          <div className="font-mono text-xs font-semibold uppercase text-[var(--accent)]">Diagnostics</div>
-          <h1 className="mt-1 text-3xl font-semibold text-[var(--fg)]">系统日志</h1>
-          <p className="mt-1.5 text-xs text-[var(--muted)]">实时查看、筛选和导出运行日志。</p>
+          <h1 className="text-3xl font-semibold text-[var(--fg)]">系统日志</h1>
+          <p className="mt-1.5 text-sm text-[var(--muted)]">实时查看、筛选和导出运行日志。</p>
         </div>
-        <div className="flex w-full sm:w-auto justify-end gap-2">
+        <div className="ml-auto flex justify-end gap-2">
           <button
             onClick={clearLogs}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border-muted)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
+            className="flex h-11 w-11 items-center justify-center md:h-10 md:w-10 rounded-lg border border-[var(--border-muted)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             title="清空当前视图"
+            aria-label="清空当前日志视图"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>
           <Button
             onClick={() => setIsPaused(!isPaused)}
@@ -227,9 +227,9 @@ const Logs = () => {
       </header>
 
       <GlassCard className="logs-filter shrink-0 py-4">
-        <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)] lg:grid-cols-[160px_minmax(0,1fr)_120px_auto]">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[140px_minmax(0,1fr)] lg:grid-cols-[160px_minmax(0,1fr)_120px_auto]">
           <label className="block space-y-2">
-            <span className="block text-xs uppercase tracking-[0.28em] text-gray-500">等级</span>
+            <span className="block text-xs font-medium text-[var(--muted)]">等级</span>
             <select
               value={filters.level}
               onChange={(event) => setFilters((prev) => ({ ...prev, level: event.target.value }))}
@@ -243,8 +243,8 @@ const Logs = () => {
             </select>
           </label>
 
-          <label className="block space-y-2">
-            <span className="block text-xs uppercase tracking-[0.28em] text-gray-500">关键字</span>
+          <label className="col-span-2 block space-y-2 sm:col-span-1">
+            <span className="block text-xs font-medium text-[var(--muted)]">关键字</span>
             <input
               value={filters.keyword}
               onChange={(event) => setFilters((prev) => ({ ...prev, keyword: event.target.value }))}
@@ -254,7 +254,7 @@ const Logs = () => {
           </label>
 
           <label className="block space-y-2">
-            <span className="block text-xs uppercase tracking-[0.28em] text-gray-500">数量</span>
+            <span className="block text-xs font-medium text-[var(--muted)]">数量</span>
             <select
               value={currentLimit}
               onChange={(event) => setFilters((prev) => ({ ...prev, limit: normalizeLogLimit(event.target.value) }))}
@@ -283,7 +283,7 @@ const Logs = () => {
         </div>
 
         <div className="mt-4">
-          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 custom-scrollbar">
+          <div className="flex flex-wrap gap-1.5">
             {CHANNEL_OPTIONS.map((channel) => {
               const active = filters.channels.includes(channel);
               return (
@@ -291,7 +291,8 @@ const Logs = () => {
                   key={channel}
                   type="button"
                   onClick={() => toggleChannel(channel)}
-                  className={`shrink-0 border-b-2 px-2 py-1.5 text-[11px] font-semibold transition-colors ${active ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--fg)]'}`}
+                  aria-pressed={active}
+                  className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md md:min-h-9 border px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${active ? 'border-[color-mix(in_oklch,var(--accent)_34%,var(--border))] bg-[var(--accent-soft)] text-[var(--accent-muted)]' : 'border-[var(--border-subtle)] text-[var(--muted)] hover:bg-[var(--surface-quiet)] hover:text-[var(--fg)]'}`}
                 >
                   {channel}
                 </button>
@@ -313,11 +314,11 @@ const Logs = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-[92px_52px_minmax(0,1fr)] gap-3 border-b border-[var(--border-subtle)] px-3 py-2 text-[10px] font-semibold uppercase text-[var(--muted)] sm:px-4 md:grid-cols-[170px_64px_76px_minmax(180px,220px)_minmax(0,1fr)]">
+        <div className="hidden grid-cols-[170px_64px_76px_minmax(180px,220px)_minmax(0,1fr)] gap-3 border-b border-[var(--border-subtle)] px-3 py-2 text-xs font-semibold uppercase text-[var(--muted)] sm:px-4 md:grid">
           <span>Timestamp</span>
           <span>Level</span>
-          <span className="hidden md:block">Channel</span>
-          <span className="hidden md:block">Scope</span>
+          <span>Channel</span>
+          <span>Scope</span>
           <span>Message</span>
         </div>
 
@@ -325,7 +326,10 @@ const Logs = () => {
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="min-h-0 flex-1 overflow-y-auto p-3 pb-16 font-mono text-xs sm:p-4 sm:pb-16 sm:text-sm space-y-1 custom-scrollbar"
+            role="log"
+            aria-label="日志流"
+            aria-live="off"
+            className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 pb-24 font-mono text-xs custom-scrollbar sm:p-4 sm:text-sm md:space-y-0.5"
           >
             {logs.length === 0 && (
               <div className="mt-10 text-center italic text-[var(--muted)]">等待日志数据...</div>
@@ -334,15 +338,22 @@ const Logs = () => {
               <div
                 key={`${log.timestamp}-${log.channel}-${log.action}-${index}`}
                 data-log-row
-                className="grid grid-cols-[92px_52px_minmax(0,1fr)] items-start gap-3 rounded px-2 py-1.5 hover:bg-[var(--surface-hover)] md:grid-cols-[170px_64px_76px_minmax(180px,220px)_minmax(0,1fr)]"
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2.5 hover:bg-[var(--surface-hover)] md:grid-cols-[170px_64px_76px_minmax(180px,220px)_minmax(0,1fr)] md:rounded md:border-0 md:bg-transparent md:px-2 md:py-1.5"
               >
-                <span className="text-gray-500 whitespace-nowrap truncate">{log.timestampText}</span>
-                <span className={`inline-flex w-fit border-l pl-2 text-[10px] font-bold uppercase tracking-[0.18em] ${getLevelBadgeClass(log.level)}`}>
+                <span className="order-1 min-w-0 text-xs leading-5 text-[var(--muted)] md:order-none md:text-sm md:whitespace-nowrap">
+                  {log.timestampText}
+                </span>
+                <span className={`order-2 inline-flex w-fit justify-self-end border-l pl-2 text-xs font-bold uppercase tracking-[0.18em] md:order-none md:justify-self-start ${getLevelBadgeClass(log.level)}`}>
                   {log.level}
                 </span>
-                <span className="hidden text-sky-200 md:block">{log.channel || '-'}</span>
-                <span className="hidden text-gray-500 break-all md:block">{log.scope || '-'}</span>
-                <span className="text-gray-300 whitespace-pre-wrap break-all leading-relaxed">
+                <span className="order-3 col-span-2 flex flex-wrap gap-x-2 text-xs leading-5 text-[var(--muted)] md:hidden">
+                  <span>{log.channel || '-'}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{log.scope || '-'}</span>
+                </span>
+                <span className="order-3 col-span-2 hidden min-w-0 text-[var(--info)] md:order-none md:col-span-1 md:block">{log.channel || '-'}</span>
+                <span className="order-3 col-span-2 hidden min-w-0 break-all text-[var(--muted)] md:order-none md:col-span-1 md:block">{log.scope || '-'}</span>
+                <span className="order-4 col-span-2 min-w-0 whitespace-pre-wrap break-words leading-relaxed text-[var(--fg)] md:order-none md:col-span-1 md:break-all">
                   {getLogMessageText(log)}
                 </span>
               </div>
@@ -353,7 +364,7 @@ const Logs = () => {
             <button
               type="button"
               onClick={floatingButtonMode === 'top' ? jumpToTop : jumpToBottom}
-              className="absolute bottom-4 right-3 z-10 inline-flex items-center gap-2 rounded-lg border border-[var(--border-muted)] bg-[var(--surface-raised)] px-3 py-2 text-xs font-semibold text-[var(--accent-muted)] shadow-[var(--shadow-floating)] transition-colors hover:bg-[var(--surface-hover)] sm:right-4"
+              className="absolute bottom-4 right-3 z-10 inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-[var(--border-muted)] bg-[var(--surface-raised)] px-3 py-2 text-xs font-semibold text-[var(--accent-muted)] shadow-[var(--shadow-floating)] transition-colors hover:bg-[var(--surface-hover)] sm:right-4"
               title={floatingButtonMode === 'top' ? '回顶部' : '去底部'}
               aria-label={floatingButtonMode === 'top' ? '回顶部' : '去底部'}
             >

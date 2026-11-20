@@ -263,16 +263,18 @@ const PreviewGradientSection = ({
                                 <div className="flex items-center gap-3">
                                     <button
                                         type="button"
+                                        aria-label={`选择${FIELD_LABELS[field]}颜色`}
                                         ref={(node) => {
                                             triggerRefs.current[field] = node
                                         }}
                                         onClick={() => handleTogglePicker(field)}
-                                        className={`grid h-14 w-14 place-items-center rounded-lg border bg-[var(--surface-quiet)] transition-colors ${pickerState?.field === field ? 'border-[color-mix(in_oklch,var(--accent)_48%,var(--border))]' : 'border-[var(--border-subtle)] hover:border-[var(--border-muted)]'}`}
+                                        className={`grid h-14 w-14 place-items-center rounded-lg border bg-[var(--surface-quiet)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${pickerState?.field === field ? 'border-[color-mix(in_oklch,var(--accent)_48%,var(--border))]' : 'border-[var(--border-subtle)] hover:border-[var(--border-muted)]'}`}
                                     >
                                         <span className="h-10 w-10 rounded-md shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_12px_28px_rgba(0,0,0,0.22)]" style={buildChipPreview(effectivePreviewColors[field])} />
                                     </button>
                                     <input
                                         type="text"
+                                        aria-label={`${FIELD_LABELS[field]}十六进制色值`}
                                         value={gradientInputs[field]}
                                         onChange={(event) => handleGradientInputChange(field, event.target.value)}
                                         className={`field-control h-11 w-36 px-4 font-mono text-sm tracking-[0.03em] ${gradientErrors[field] ? 'border-[color-mix(in_oklch,var(--danger)_70%,var(--border))]' : ''}`}

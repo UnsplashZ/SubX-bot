@@ -76,7 +76,7 @@ export const Button = React.forwardRef(function Button(
       className={twMerge(
         clsx(
           'inline-flex items-center justify-center gap-2 rounded-lg border font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55',
-          size === 'sm' ? 'min-h-8 px-3 py-1.5 text-xs' : 'min-h-9 px-3.5 py-1.5 text-[13px]',
+          size === 'sm' ? 'min-h-11 px-3 py-1.5 text-xs md:min-h-8' : 'min-h-11 px-3.5 py-1.5 text-[13px] md:min-h-9',
           buttonVariants[variant],
           className
         )
@@ -141,13 +141,13 @@ export const StatusPill = ({ children, tone = 'neutral', className }) => (
   </span>
 );
 
-export const DataTable = ({ columns, rows, getRowKey, empty = '暂无数据', className }) => (
+export const DataTable = ({ columns, rows, getRowKey, empty = '暂无数据', label = '数据表', className }) => (
   <div className={twMerge(clsx('overflow-x-auto', className))}>
-    <table className="min-w-full border-collapse text-left text-sm">
+    <table aria-label={label} className="min-w-full border-collapse text-left text-sm">
       <thead className="border-b border-[var(--border)] text-xs font-medium text-[var(--muted)]">
         <tr>
           {columns.map((column) => (
-            <th key={column.key} className={twMerge(clsx('px-4 py-3', column.headerClassName))}>
+            <th key={column.key} scope="col" className={twMerge(clsx('px-4 py-3', column.headerClassName))}>
               {column.title}
             </th>
           ))}

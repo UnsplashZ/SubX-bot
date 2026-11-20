@@ -206,6 +206,7 @@ const QqProviderSection = ({
                                         <input
                                             type="number"
                                             min="1"
+                                            aria-label="账号总 QPM"
                                             disabled={disabled}
                                             value={config.qqOfficialAccountQpm || 30}
                                             onChange={(event) => onChange('qqOfficialAccountQpm', parseInt(event.target.value, 10) || 30)}
@@ -214,6 +215,7 @@ const QqProviderSection = ({
                                         <input
                                             type="number"
                                             min="1"
+                                            aria-label="单群 QPM"
                                             disabled={disabled}
                                             value={config.qqOfficialGroupQpm || 20}
                                             onChange={(event) => onChange('qqOfficialGroupQpm', parseInt(event.target.value, 10) || 20)}

@@ -7,6 +7,7 @@ import api from '../utils/auth';
 
 const HISTORY_STORAGE_KEY = 'bili-qq-bot.dashboard.history.v1';
 const HISTORY_LIMIT = 60;
+const HISTORY_WINDOW_MS = 10 * 60 * 1000;
 
 const PROCESS_ROWS = [
   { key: 'linkParsing', label: '链接解析' },
@@ -90,6 +91,7 @@ function normalizeHistoryEntry(entry) {
     timestamp: Number(entry.timestamp || Date.now()),
     cpu: Number(entry.cpu),
     memory: Number(entry.memory),
+    memoryPercent: Number.isFinite(Number(entry.memoryPercent)) ? Number(entry.memoryPercent) : null,
     memoryFormatted: entry.memoryFormatted || formatBytes(Number(entry.memory))
   };
 }
@@ -99,7 +101,11 @@ function readPersistedHistory() {
     const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeHistoryEntry).filter(Boolean).slice(-HISTORY_LIMIT);
+    const cutoff = Date.now() - HISTORY_WINDOW_MS;
+    return parsed
+      .map(normalizeHistoryEntry)
+      .filter((entry) => entry && entry.timestamp >= cutoff)
+      .slice(-HISTORY_LIMIT);
   } catch {
     return [];
   }
@@ -165,14 +171,18 @@ const Dashboard = () => {
       setLastUpdatedAt(new Date(now));
       setFetchError('');
       setHistory((previous) => {
+        const memoryUsed = Number(data.memory?.used) || 0;
+        const memoryTotal = Number(data.memory?.total) || 0;
         const newEntry = {
           time: new Date(now).toLocaleTimeString(),
           timestamp: now,
-          cpu: data.cpu,
-          memory: data.memory.used,
-          memoryFormatted: formatBytes(data.memory.used)
+          cpu: Number(data.cpu) || 0,
+          memory: memoryUsed,
+          memoryPercent: memoryTotal ? (memoryUsed / memoryTotal) * 100 : null,
+          memoryFormatted: formatBytes(memoryUsed)
         };
-        const nextHistory = [...previous, newEntry].slice(-HISTORY_LIMIT);
+        const recent = previous.filter((entry) => now - entry.timestamp < HISTORY_WINDOW_MS);
+        const nextHistory = [...recent, newEntry].slice(-HISTORY_LIMIT);
         persistHistory(nextHistory);
         return nextHistory;
       });
@@ -225,6 +235,13 @@ const Dashboard = () => {
   const cpuTone = getMetricTone(stats.cpu, 70, 90);
   const memoryTone = getMetricTone(memoryPercent, 75, 90);
   const providerView = getProviderPresentation(provider);
+  const historyPlot = history.map((entry) => ({
+    ...entry,
+    memoryPercent: entry.memoryPercent ?? (memoryTotal ? (entry.memory / memoryTotal) * 100 : null)
+  }));
+  const chartSummary = historyPlot.length
+    ? `资源趋势：最近 ${historyPlot.length} 个采样点。CPU ${formatPercent(stats.cpu)}，内存 ${formatPercent(memoryPercent)}。`
+    : '资源趋势：暂无采样数据。';
   const processRows = PROCESS_ROWS.map((row) => {
     const metric = normalizeProcessMetric(stats.processReport?.[row.key]);
     return { ...row, metric, tone: getProcessTone(metric) };
@@ -244,7 +261,7 @@ const Dashboard = () => {
     {
       label: '内存使用',
       value: formatBytes(memoryUsed),
-      detail: memoryTotal ? `共 ${formatBytes(memoryTotal)}` : '总量未知',
+      detail: memoryTotal ? `${formatPercent(memoryPercent)} · 共 ${formatBytes(memoryTotal)}` : '总量未知',
       tone: memoryTone,
       icon: MemoryStick
     },
@@ -271,25 +288,36 @@ const Dashboard = () => {
     accent: 'bg-[var(--accent-soft)] text-[var(--accent)]'
   };
 
+  const previewMetric = normalizeProcessMetric(stats.processReport?.previewGeneration);
+  const subscriptionMetric = normalizeProcessMetric(stats.processReport?.subscriptionPush);
+  const processStateLabel = (metric) => {
+    const tone = getProcessTone(metric);
+    if (tone === 'success') return '正常';
+    if (tone === 'warn') return '有失败';
+    return '需检查';
+  };
+  const resourceTone = cpuTone === 'danger' || memoryTone === 'danger'
+    ? 'danger'
+    : (cpuTone === 'warn' || memoryTone === 'warn' ? 'warn' : 'success');
   const healthRows = [
     providerView,
     {
-      label: 'CPU 资源',
-      detail: formatPercent(stats.cpu),
-      state: cpuTone === 'success' ? '正常' : (cpuTone === 'warn' ? '偏高' : '过高'),
-      tone: cpuTone
+      label: '资源采样',
+      detail: `CPU ${formatPercent(stats.cpu)} · 内存 ${formatPercent(memoryPercent)}`,
+      state: resourceTone === 'success' ? '采样正常' : '接近上限',
+      tone: resourceTone
     },
     {
-      label: '内存资源',
-      detail: memoryTotal ? `${formatPercent(memoryPercent)} 已使用` : formatBytes(memoryUsed),
-      state: memoryTone === 'success' ? '正常' : (memoryTone === 'warn' ? '偏高' : '过高'),
-      tone: memoryTone
+      label: '预览生成',
+      detail: `成功 ${previewMetric.success} / 共 ${previewMetric.total}`,
+      state: processStateLabel(previewMetric),
+      tone: getProcessTone(previewMetric)
     },
     {
-      label: '网络吞吐',
-      detail: `上行 ${formatNetSpeed(stats.network?.up ?? 0)}`,
-      state: '监控中',
-      tone: 'success'
+      label: '订阅推送',
+      detail: `成功 ${subscriptionMetric.success} / 共 ${subscriptionMetric.total}`,
+      state: processStateLabel(subscriptionMetric),
+      tone: getProcessTone(subscriptionMetric)
     }
   ];
 
@@ -313,16 +341,16 @@ const Dashboard = () => {
     <div className="pb-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--fg)] md:text-[30px]">运行状态</h1>
-          <p className="mt-1.5 text-xs text-[var(--muted)]">查看服务健康、资源使用和自动化流程。</p>
+          <h1 className="text-[30px] font-semibold tracking-[-0.02em] text-[var(--fg)]">运行状态</h1>
+          <p className="mt-1.5 text-sm text-[var(--muted)]">查看服务健康、资源使用和自动化流程。</p>
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-[var(--subtle)]">
+        <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
           <span>最后更新：{formatUpdatedAt(lastUpdatedAt)}</span>
           <button
             type="button"
             onClick={fetchData}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 font-semibold text-[var(--accent)] disabled:opacity-50"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 font-semibold text-[var(--accent)] disabled:opacity-50"
           >
             <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
             刷新
@@ -354,7 +382,7 @@ const Dashboard = () => {
           return (
             <Card key={kpi.label}>
               <div className="flex items-start justify-between gap-3">
-                <div className="text-xs font-medium text-[var(--muted)]">{kpi.label}</div>
+                <div className="text-sm font-medium text-[var(--muted)]">{kpi.label}</div>
                 <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${kpiIconClass[kpi.tone] || kpiIconClass.accent}`}>
                   <KpiIcon size={15} />
                 </span>
@@ -362,7 +390,7 @@ const Dashboard = () => {
               <div className="mt-3 text-[22px] font-semibold leading-7 tracking-[-0.01em] tabular-nums text-[var(--fg)]">
                 {kpi.value}
               </div>
-              <div className={`mt-1.5 text-[11px] ${toneTextClass(kpi.tone)}`}>{kpi.detail}</div>
+              <div className={`mt-1.5 text-xs ${toneTextClass(kpi.tone)}`}>{kpi.detail}</div>
             </Card>
           );
         })}
@@ -373,15 +401,19 @@ const Dashboard = () => {
           <div className="flex items-start justify-between gap-4 px-5 pt-5">
             <div>
               <h2 className="text-base font-semibold text-[var(--fg)]">资源趋势</h2>
-              <p className="mt-1 text-[11px] text-[var(--muted)]">最近 60 个采样点，每 2 秒更新</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">最近 60 个采样点，每 2 秒更新</p>
             </div>
-            <div className="flex items-center gap-4 pt-0.5 text-[10px] text-[var(--muted)]">
-              <span className="font-semibold text-[var(--accent)]">实时</span>
-              <span>CPU</span>
-              <span>内存</span>
+            <div className="flex items-center gap-4 pt-1 text-xs text-[var(--muted)]">
+              <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-0.5 w-4 rounded-full bg-[var(--accent)]" />CPU</span>
+              <span className="flex items-center gap-1.5"><span aria-hidden="true" className="h-0.5 w-4 rounded-full bg-[var(--purple)]" />内存</span>
             </div>
           </div>
-          <div className="h-64 px-2 pb-2 pt-4 md:h-72">
+          <div
+            role="img"
+            aria-label={chartSummary}
+            className="h-64 px-2 pb-2 pt-4 md:h-72"
+          >
+            <div aria-hidden="true" className="h-full w-full">
             <ResponsiveContainer
               width="100%"
               height="100%"
@@ -389,7 +421,11 @@ const Dashboard = () => {
               minHeight={256}
               initialDimension={{ width: 900, height: 288 }}
             >
-              <AreaChart data={history} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
+              <AreaChart
+                data={historyPlot}
+                accessibilityLayer={false}
+                margin={{ top: 8, right: 6, left: -18, bottom: 0 }}
+              >
                 <defs>
                   <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.2}/>
@@ -397,9 +433,9 @@ const Dashboard = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
-                <XAxis dataKey="time" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: 'var(--subtle)' }} minTickGap={36} />
-                <YAxis yAxisId="cpu" domain={[0, 100]} axisLine={false} tickLine={false} fontSize={10} tick={{ fill: 'var(--subtle)' }} />
-                <YAxis yAxisId="memory" hide orientation="right" />
+                <XAxis dataKey="time" axisLine={false} tickLine={false} fontSize={11} tick={{ fill: 'var(--muted)' }} minTickGap={36} />
+                <YAxis yAxisId="cpu" domain={[0, 100]} axisLine={false} tickLine={false} fontSize={11} tick={{ fill: 'var(--muted)' }} />
+                <YAxis yAxisId="memory" domain={[0, 100]} hide orientation="right" />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'var(--surface-raised)',
@@ -411,31 +447,34 @@ const Dashboard = () => {
                   }}
                   itemStyle={{ color: 'var(--fg)' }}
                   labelStyle={{ color: 'var(--muted)' }}
-                  formatter={(value, name) => (
-                    name === 'Memory' ? [formatBytes(value), '内存'] : [`${Number(value).toFixed(1)}%`, 'CPU']
+                  formatter={(value, name, item) => (
+                    name === 'Memory'
+                      ? [`${Number(value).toFixed(1)}%（${item?.payload?.memoryFormatted || formatBytes(item?.payload?.memory)}）`, '内存']
+                      : [`${Number(value).toFixed(1)}%`, 'CPU']
                   )}
                 />
                 <Area yAxisId="cpu" type="monotone" dataKey="cpu" stroke="var(--accent)" strokeWidth={2.5} fill="url(#colorCpu)" name="CPU %" isAnimationActive={false} />
-                <Area yAxisId="memory" type="monotone" dataKey="memory" stroke="var(--purple)" strokeWidth={2} fill="transparent" name="Memory" isAnimationActive={false} />
+                <Area yAxisId="memory" type="monotone" dataKey="memoryPercent" stroke="var(--purple)" strokeWidth={2} strokeDasharray="5 4" fill="transparent" name="Memory" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
+            </div>
           </div>
         </Card>
 
         <Card>
           <h2 className="text-base font-semibold text-[var(--fg)]">运行健康</h2>
-          <p className="mt-1 text-[11px] text-[var(--muted)]">来自当前运行时的实时状态</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">来自当前运行时的实时状态</p>
           <div className="mt-3 divide-y divide-[var(--border-subtle)]">
             {healthRows.map((row) => (
               <div key={row.label} className="flex min-h-14 items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-[var(--fg)]">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-[var(--fg)]">
                     <span className={`h-1.5 w-1.5 rounded-full bg-current ${toneTextClass(row.tone)}`} />
                     <span className="truncate">{row.label}</span>
                   </div>
-                  <div className="mt-1 truncate pl-3.5 text-[10px] text-[var(--muted)]">{row.detail}</div>
+                  <div className="mt-1 truncate pl-3.5 text-xs text-[var(--muted)]">{row.detail}</div>
                 </div>
-                <span className={`shrink-0 text-[10px] font-semibold ${toneTextClass(row.tone)}`}>{row.state}</span>
+                <span className={`shrink-0 text-xs font-semibold ${toneTextClass(row.tone)}`}>{row.state}</span>
               </div>
             ))}
           </div>
@@ -446,12 +485,12 @@ const Dashboard = () => {
         <div className="flex items-start justify-between gap-4 px-5 pt-5">
           <div>
             <h2 className="text-base font-semibold text-[var(--fg)]">自动化流程</h2>
-            <p className="mt-1 text-[11px] text-[var(--muted)]">处理数量、失败情况与最近状态</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">处理数量、失败情况与最近状态</p>
           </div>
-          <span className="font-mono text-[10px] text-[var(--subtle)]">{processRows.length} 个流程</span>
+          <span className="font-mono text-xs text-[var(--muted)]">{processRows.length} 个流程</span>
         </div>
         <div className="mt-3">
-          <DataTable columns={processColumns} rows={processRows} getRowKey={(row) => row.key} />
+          <DataTable label="自动化流程指标" columns={processColumns} rows={processRows} getRowKey={(row) => row.key} />
         </div>
       </Card>
     </div>

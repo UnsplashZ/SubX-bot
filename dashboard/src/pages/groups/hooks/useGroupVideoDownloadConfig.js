@@ -127,6 +127,11 @@ const useGroupVideoDownloadConfig = ({
     show('已设为跟随全局，保存后生效', 'success');
   }, [show]);
 
+  const discardVideoDownloadChanges = useCallback(async () => {
+    if (!selectedGroupId) return;
+    await fetchVideoDownloadConfig(selectedGroupId);
+  }, [selectedGroupId, fetchVideoDownloadConfig]);
+
   return {
     videoDownloadConfig,
     globalVideoDownloadConfig,
@@ -135,7 +140,8 @@ const useGroupVideoDownloadConfig = ({
     videoDownloadResetPending,
     fetchVideoDownloadConfig,
     saveVideoDownloadConfig,
-    resetVideoDownloadConfig
+    resetVideoDownloadConfig,
+    discardVideoDownloadChanges
   };
 };
 
